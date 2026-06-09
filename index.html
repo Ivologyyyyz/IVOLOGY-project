@@ -1,916 +1,2494 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>魔法花园 · 手势疗愈</title>
-    <!-- 固定版本号 + 统一路径，解决模型加载失败 -->
-    <script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            user-select: none;
-        }
-        body {
-            background-color: #f5f0e0;
-            overflow-x: hidden;
-            font-family: 'Segoe UI', 'Quicksand', system-ui, -apple-system, 'San Francisco', sans-serif;
-        }
-        #webcam {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            transform: scaleX(-1);
-            opacity: 0.55;
-            z-index: 1;
-            pointer-events: none;
-        }
-        #outputCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            display: block;
-            z-index: 2;
-            pointer-events: none;
-        }
-        #debugPanel {
-            position: fixed;
-            bottom: 12px;
-            left: 12px;
-            background: rgba(20, 18, 16, 0.8);
-            backdrop-filter: blur(8px);
-            color: #e0d7c6;
-            padding: 8px 14px;
-            border-radius: 20px;
-            font-family: monospace;
-            font-size: 11px;
-            z-index: 100;
-            border-left: 3px solid #c9b88c;
-            pointer-events: none;
-        }
-        #hintPanel {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(30, 28, 24, 0.7);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 12px 20px;
-            font-size: 0.75rem;
-            color: #e0d7c6;
-            z-index: 100;
-            text-align: right;
-            line-height: 1.5;
-            border: 1px solid rgba(201, 184, 140, 0.3);
-            pointer-events: none;
-        }
-        #introText {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 1.6rem;
-            text-align: center;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-            z-index: 200;
-            opacity: 1;
-            transition: opacity 1s ease;
-            pointer-events: none;
-            background: rgba(0,0,0,0.3);
-            backdrop-filter: blur(6px);
-            padding: 12px 28px;
-            border-radius: 60px;
-            white-space: nowrap;
-        }
-        .tutorial-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 300;
-            pointer-events: none;
-        }
-        #loadingIndicator {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(200,180,140,0.5);
-            animation: pulseFlower 1.2s infinite ease-in-out;
-            z-index: 250;
-            pointer-events: none;
-            backdrop-filter: blur(2px);
-        }
-        @keyframes pulseFlower {
-            0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
-            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
-            100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
-        }
-        #seedBallHint {
-            position: fixed;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.75rem;
-            color: rgba(240,230,210,0.9);
-            text-align: center;
-            z-index: 100;
-            pointer-events: none;
-            background: rgba(0,0,0,0.4);
-            padding: 6px 12px;
-            border-radius: 40px;
-            backdrop-filter: blur(4px);
-            white-space: nowrap;
-            transition: opacity 1s;
-        }
-        #reportPage {
-            display: none;
-            background-color: #f5f0e8;
-            min-height: 100vh;
-            padding: 40px 30px;
-            font-family: Georgia, 'Times New Roman', Times, serif;
-            color: #3e362e;
-            position: relative;
-            z-index: 500;
-        }
-        .report-content {
-            max-width: 700px;
-            margin: 0 auto;
-            background: rgba(255,252,240,0.7);
-            padding: 30px 40px;
-            border-radius: 48px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(200,180,140,0.3);
-        }
-        hr.dashed {
-            border: none;
-            border-bottom: 1px dashed #c9b88c;
-            width: 60%;
-            margin: 20px auto;
-        }
-        .return-btn {
-            border: 2px solid #8b7d6b;
-            border-radius: 30px;
-            background: transparent;
-            color: #5c4a3a;
-            padding: 10px 28px;
-            cursor: pointer;
-            font-family: Georgia, serif;
-            font-size: 1rem;
-            transition: all 0.2s;
-            margin-top: 30px;
-        }
-        .return-btn:hover {
-            background: #e8dfce;
-            border-color: #5c4a3a;
-        }
-        #cameraDeniedOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(30, 28, 24, 0.96);
-            backdrop-filter: blur(8px);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            flex-direction: column;
-            font-family: Georgia, serif;
-            text-align: center;
-            color: #f5efdf;
-            gap: 20px;
-        }
-        .denied-message {
-            background: rgba(0,0,0,0.6);
-            padding: 28px 40px;
-            border-radius: 48px;
-            border: 1px solid #c9b88c;
-            max-width: 80%;
-        }
-        .reload-btn {
-            background: #c9b88c;
-            color: #2c241a;
-            border: none;
-            padding: 10px 28px;
-            border-radius: 40px;
-            font-size: 1rem;
-            cursor: pointer;
-            font-family: inherit;
-            margin-top: 16px;
-        }
-    </style>
-</head>
-<body>
-    <video id="webcam" autoplay playsinline muted></video>
-    <canvas id="outputCanvas"></canvas>
-    <div id="debugPanel">
-        📷 <span id="camStatus">INIT</span> | ✋ <span id="handDetected">NO</span> | 👤 <span id="faceDetected">NO</span> | 🎭 <span id="gestureName">—</span> | 🔊 <span id="audioState">SUSPENDED</span> | 🖥️ <span id="fps">0</span> fps
-    </div>
-    <div id="hintPanel">
-        ✊🦋 握拳绽放 &nbsp;&nbsp;|&nbsp;&nbsp; 🖐️🌸 花开指尖<br>
-        👆💧 指尖落雨 &nbsp;&nbsp;|&nbsp;&nbsp; 🤏🌱 水滴凝珠 &nbsp;&nbsp;|&nbsp;&nbsp; ✋🍄 静止生蘑
-    </div>
-    <div id="introText"></div>
-    <div id="loadingIndicator"></div>
-    <div id="seedBallHint" style="display: none;"></div>
-
-    <!-- 报告页面 -->
-    <div id="reportPage">
-        <div class="report-content">
-            <h1 style="font-size: 2rem; text-align: center; margin-bottom: 30px; font-style: italic;">🌿 Your Garden Weather Log · Past 7 Days</h1>
-            <div id="weatherSummary" style="font-size: 1.1rem; text-align: center; margin-bottom: 20px;">⛅ Cloudy 3 days · 🌧️ Rainy 2 days · 🌤️ Sunny 1 day · 🌫️ Foggy 1 day</div>
-            <hr class="dashed">
-            <div id="reminderStats" style="text-align: center; line-height: 1.8;"></div>
-            <hr class="dashed">
-            <div id="gestureTable" style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; text-align: center;"></div>
-            <hr class="dashed">
-            <div id="calmMoment" style="text-align: center; font-style: italic;"></div>
-            <div id="narrative" style="font-size: 1rem; text-align: center; font-style: italic; opacity: 0.85; margin-bottom: 8px;"></div>
-            <div id="highlight" style="text-align: center; margin-top: 12px;"></div>
-            <div id="closingMessage" style="text-align: center; font-style: italic; font-size: 1.1rem; margin-top: 20px;"></div>
-            <div style="text-align: center;">
-                <button id="returnToGardenBtn" class="return-btn">Return to Garden</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 相机拒绝遮罩 -->
-    <div id="cameraDeniedOverlay">
-        <div class="denied-message">
-            🌸 花园需要你的眼睛 🌸<br><br>
-            请允许摄像头权限，让手势唤醒魔法。<br>
-            <button id="reloadPageBtn" class="reload-btn">🔄 重新进入花园</button>
-        </div>
-    </div>
-
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiet Garden — Mindful Gesture Sanctuary</title>
+    <!-- Google Fonts for Editorial Typographic Vibe -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        (function(){
-            // ======================== 文本数组 ========================
-            const entrancePhrases = [
-                "Your hands can grow what they once harmed.",
-                "Let your fingers bloom instead of bleed.",
-                "The garden doesn't ask you to be calm. It just gives your hands something else to do.",
-                "Every flower here was once a gesture that chose kindness over harm.",
-                "You're not broken. Your hands just need a different rhythm.",
-                "In this garden, restlessness becomes rain, and rain grows flowers.",
-                "Come as you are. Leave with petals, not wounds."
-            ];
-            const exitPhrases = [
-                "The garden stays. Come back when you need it.",
-                "Your flowers will wait for you.",
-                "Close the screen. Your hands remember now.",
-                "Until next time — let the butterflies rest.",
-                "You grew something today. That's not nothing.",
-                "The garden doesn't disappear. It just goes quiet until you return."
-            ];
-            const dandelionFarewellPhrases = [
-                "Breathe it out. The garden will catch it.",
-                "Let the wind carry what you're ready to release.",
-                "Some things are meant to scatter. Let them.",
-                "You came with restless hands. You leave with seeds in the air."
-            ];
-            const gestureCaptions = {
-                FIST: "握紧再松开 — 你的手刚刚呼出了一口气。蝴蝶从紧张中升起。渐进式肌肉放松：先绷紧，再放下。",
-                OPEN: "你的手指可以划出伤口，也可以开出一路繁花。每一个动作都是选择生长。",
-                TAP: "当急促的敲击欲念涌起，让它化作雨滴。风暴也会浇灌新芽。",
-                PINCH: "捏住空气，一滴水坠落。注意力就是水，花园是你的心。",
-                STILL: "静止也是一种生长。蘑菇在你停止尝试时出现。正念：允许此刻如其所是。"
-            };
-            const seedBallHintText = "One day, when you can't open this garden, your hands will remember. A seed ball can help.";
-
-            // ======================== 报告模式检测 ========================
-            const urlParams = new URLSearchParams(window.location.search);
-            const isReportMode = urlParams.get('report') === 'wristband';
-            const gestureUIElements = ['webcam', 'outputCanvas', 'debugPanel', 'hintPanel', 'introText', 'loadingIndicator', 'seedBallHint'];
-            const reportDiv = document.getElementById('reportPage');
-            const cameraOverlay = document.getElementById('cameraDeniedOverlay');
-
-            if (isReportMode) {
-                gestureUIElements.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.style.display = 'none';
-                });
-                reportDiv.style.display = 'block';
-                const reminders = parseInt(urlParams.get('reminders')) || 14;
-                const flowers = parseInt(urlParams.get('flowers')) || 47;
-                const butterflies = parseInt(urlParams.get('butterflies')) || 23;
-                const rains = parseInt(urlParams.get('rains')) || 8;
-                const mushrooms = parseInt(urlParams.get('mushrooms')) || 5;
-                const calmTime = urlParams.get('calmTime') || "Thursday at 3:17pm";
-                const openedCount = Math.round(reminders * 0.8);
-                document.getElementById('reminderStats').innerHTML = `
-                    You were reminded <strong>${reminders}</strong> times.<br>
-                    <strong>${openedCount}</strong> times, you opened the garden.<br>
-                    Your hands chose growth over harm.
-                `;
-                document.getElementById('gestureTable').innerHTML = `
-                    <div>🌸 Flowers planted &nbsp; <strong>${flowers}</strong></div>
-                    <div>🦋 Butterflies &nbsp; <strong>${butterflies}</strong></div>
-                    <div>💧 Rains &nbsp; <strong>${rains}</strong></div>
-                    <div>🍄 Mushrooms &nbsp; <strong>${mushrooms}</strong></div>
-                `;
-                document.getElementById('calmMoment').innerHTML = `Your quietest moment was ${calmTime}.`;
-                document.getElementById('narrative').innerHTML = `Your garden's most common weather was Cloudy — growing while waiting.`;
-                document.getElementById('highlight').innerHTML = `The heaviest rain was on Tuesday, but you planted <strong>${flowers}</strong> flowers that day.`;
-                const reportClosingMessages = [
-                    "You've been through rain this week, but your flowers are still blooming. That's not nothing.",
-                    "The garden doesn't count your storms. It counts what grew because of them.",
-                    "Every reminder you answered became a flower. Look how many you've grown.",
-                    "Your hands are learning. Slowly, imperfectly — but they're learning."
-                ];
-                document.getElementById('closingMessage').innerHTML = reportClosingMessages[Math.floor(Math.random() * reportClosingMessages.length)];
-                document.getElementById('returnToGardenBtn').addEventListener('click', () => {
-                    window.location.href = window.location.pathname;
-                });
-                return; // 停止执行手势逻辑
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              cream: '#f5f0e0',
+              sage: '#9bae8a',
+              ochre: '#c9b88c',
+              rose: '#c4a08e',
+              brown: '#c49a6c',
+              darkCharcoal: '#1e1c18',
+            },
+            fontFamily: {
+              serif: ['Playfair Display', 'serif'],
+              sans: ['Space Grotesk', 'sans-serif'],
+              inter: ['Inter', 'sans-serif'],
             }
+          }
+        }
+      }
+    </script>
 
-            // ======================== 正常模式 ========================
-            gestureUIElements.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = '';
+    <!-- Custom CSS for custom animations, scrollbars, etc. -->
+    <style>
+      /* Ensure full screen height without scrollbars */
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background-color: #f5f0e0;
+        color: #2e2b26;
+      }
+
+      /* Mirror raw camera input and effects canvas */
+      .mirrored {
+        transform: scaleX(-1);
+      }
+
+      /* Soft film grain background */
+      .dust-overlay {
+        pointer-events: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: radial-gradient(rgba(0,0,0,0.1) 1px, transparent 0);
+        background-size: 24px 24px;
+        opacity: 0.15;
+        z-index: 5;
+      }
+
+      /* Floating text annotations */
+      .floating-caption {
+        position: absolute;
+        pointer-events: none;
+        color: #2e2b26;
+        background: rgba(245, 240, 224, 0.9);
+        border: 1.5px solid #2e2b26;
+        border-radius: 12px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+        font-style: italic;
+        max-width: 250px;
+        text-shadow: none;
+        box-shadow: 2px 3px 0px rgba(46, 43, 38, 0.15);
+        opacity: 0;
+        transform: translate(-50%, -100%) scale(0.9);
+        animation: poppy-entrance 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        z-index: 15;
+        transition: opacity 1s ease-out;
+      }
+
+      @keyframes poppy-entrance {
+        100% {
+          opacity: 1;
+          transform: translate(-50%, -110%) scale(1);
+        }
+      }
+
+      /* First-time alert backdrop */
+      .entrance-backdrop {
+        background-color: rgb(30, 28, 24);
+        transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* Breathing edge circle styling */
+      .breathing-ring {
+        position: fixed;
+        inset: 0;
+        border: 12px solid rgba(155, 174, 138, 0.08);
+        border-radius: 0;
+        pointer-events: none;
+        z-index: 10;
+        transition: transform 4s cubic-bezier(0.445, 0.05, 0.55, 0.95);
+      }
+    </style>
+
+    <!-- MediaPipe Hands and FaceMesh CDN Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  </head>
+  <body class="font-sans bg-[#f5f0e0] h-full overflow-hidden select-none">
+
+    <!-- Ambient Dust / Noise Layer -->
+    <div class="dust-overlay"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="relative w-full h-full bg-[#f5f0e0] flex flex-col items-center justify-center overflow-hidden font-serif select-none">
+
+      <!-- Subconscious Breathing Guide (Faint Breathing Ring) -->
+      <div id="breathing-ring" class="absolute inset-0 border-[30px] border-[#5a5a40]/5 rounded-[40px] pointer-events-none z-10 transition-all duration-[4s]"></div>
+
+      <!-- Wobbly Border Accents -->
+      <div class="absolute inset-8 border border-[#9bae8a]/20 rounded-[100px] pointer-events-none z-10"></div>
+      <div class="absolute inset-10 border border-[#c9b88c]/10 rounded-[120px] pointer-events-none z-10"></div>
+
+      <!-- Ambient Quote Phrase Overlay -->
+      <div class="absolute top-10 left-0 w-full text-center z-20 px-4">
+        <p class="text-xl md:text-2xl font-serif italic text-[#5a5a40] opacity-80 tracking-wide">
+          "The garden doesn't ask you to be calm. It just gives your hands something else to do."
+        </p>
+      </div>
+
+      <!-- Centered Styled Main Viewport Container -->
+      <div id="viewport-container" class="relative w-[860px] h-[540px] max-w-[95vw] max-h-[70vh] aspect-[860/540] bg-[#e8e4d5] rounded-[48px] border-[10px] border-white/60 shadow-2xl overflow-hidden flex items-center justify-center">
+        <!-- Radial Dot background pattern to enrich simulation feel -->
+        <div class="absolute inset-0 bg-[#c9b88c]/10 flex items-center justify-center z-0 pointer-events-none">
+          <div class="w-full h-full opacity-25" style="background-image: radial-gradient(#9bae8a 1.5px, transparent 1.5px); background-size: 24px 24px;"></div>
+        </div>
+
+        <!-- WebCam Video Element (Hidden but active, mirrored) -->
+        <video id="webcam" class="absolute w-full h-full object-cover mirrored pointer-events-none opacity-0 z-0" autoplay playsinline muted></video>
+
+        <!-- Drawing & Interaction Canvas Overlapping Webcam (Mirrored) -->
+        <canvas id="interactive-canvas" class="absolute w-full h-full mirrored pointer-events-none z-10"></canvas>
+
+        <!-- Floating Captions Base Node (Unmirrored for readable text) -->
+        <div id="caption-layer" class="absolute inset-0 z-20 overflow-hidden pointer-events-none"></div>
+
+        <!-- CAMERA LOADING CARD (Nested inside framed viewport for perfect integration) -->
+        <div id="camera-loader" class="absolute inset-0 bg-cream flex flex-col items-center justify-center z-30 p-6 pointer-events-auto">
+          <div class="flex flex-col items-center gap-4">
+            <div class="w-10 h-10 border-4 border-sage border-t-transparent rounded-full animate-spin"></div>
+            <p class="font-serif italic text-darkCharcoal/70 text-lg">Waking up the digital soil...</p>
+          </div>
+        </div>
+
+        <!-- CAMERA ACCESS ERROR CARD (Nested inside framed viewport) -->
+        <div id="camera-error-screen" class="hidden absolute inset-0 bg-cream flex items-center justify-center z-40 p-6 pointer-events-auto">
+          <div class="bg-white border-2 border-darkCharcoal rounded-[24px] p-8 max-w-md shadow-[4px_4px_0px_#1e1c18] text-center">
+            <div class="w-16 h-16 bg-rose/20 rounded-full flex items-center justify-center mx-auto mb-4 text-[#1e1c18] text-2xl">📷</div>
+            <h2 class="font-serif text-2xl font-semibold text-[#1e1c18] mb-3">Camera Access Needed</h2>
+            <p class="text-[#1e1c18]/80 text-sm mb-6 leading-relaxed">
+              The garden needs your hands to grow. Please grant permission for webcam access in your browser. All video remains on your computer and is never saved.
+            </p>
+            <button onclick="window.location.reload();" class="px-6 py-2.5 bg-sage hover:bg-sage/90 text-cream border-2 border-darkCharcoal rounded-full font-sans font-medium shadow-[2px_2px_0px_#1e1c18] active:translate-y-0.5 transition-all text-sm cursor-pointer">
+              Try Again
+            </button>
+          </div>
+        </div>
+
+        <!-- TUTORIAL GHOST OVERLAY CONTAINER (Nested inside framed viewport) -->
+        <div id="tutorial-overlay" class="hidden absolute inset-0 bg-darkCharcoal/25 pointer-events-none z-30 transition-opacity duration-1000 flex flex-col items-center justify-center">
+          <!-- Overlay label containing step guidance -->
+          <div class="absolute top-[15%] left-1/2 -translate-x-1/2 text-center max-w-md bg-cream/95 border-2 border-[#1e1c18] px-6 py-4 rounded-[20px] shadow-[4px_4px_0px_#1e1c18] pointer-events-auto">
+            <h3 class="font-serif font-semibold text-[#1e1c18] text-lg mb-1">Mindful Movement Practice</h3>
+            <p id="tutorial-helper" class="text-xs text-[#1e1c18]/80 leading-relaxed font-sans mt-1">
+              Looking for your hand...
+            </p>
+            <button id="skip-tutorial-btn" onclick="skipTutorial();" class="mt-3 px-4 py-1 text-[11px] border border-[#1e1c18] bg-rose/20 hover:bg-rose/40 rounded-full font-serif font-medium transition-colors pointer-events-auto cursor-pointer">
+              Skip Tutorial
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- INTRO / ENTRANCE TRANSITION SCREEN (Kept full screen for transition impact) -->
+      <div id="entrance-gate" class="entrance-backdrop absolute inset-0 flex items-center justify-center text-center z-50 text-cream px-8 select-none">
+        <div class="max-w-xl">
+          <p id="entrance-text" class="font-serif italic text-2xl md:text-3xl font-normal leading-relaxed text-shadow opacity-0 transition-opacity duration-1000">
+            <!-- Populated dynamically -->
+          </p>
+        </div>
+      </div>
+
+      <!-- EXIT / UNLOAD PHRASE LAYER -->
+      <div id="exit-gate" class="hidden fixed inset-0 bg-[#1e1c18]/95 flex items-center justify-center text-center z-[100] text-cream px-8 select-none opacity-0 transition-opacity duration-500">
+        <p id="exit-text" class="font-serif italic text-2xl text-shadow leading-relaxed">
+          <!-- Populated dynamically -->
+        </p>
+      </div>
+
+      <!-- BOTTOM-RIGHT GESTURE HINT PANEL (Styled according to Warm Organic Theme) -->
+      <div class="fixed bottom-5 right-5 bg-[#1e1c18]/85 backdrop-blur-xl rounded-2xl p-4 w-64 z-30 select-none border border-[#e0d7c6]/15 shadow-xl text-[#e0d7c6] font-sans">
+        <h4 class="font-serif italic text-cream text-[13px] mb-3 border-b border-[#e0d7c6]/10 pb-1.5 flex justify-between items-center tracking-wide">
+          <span>Sanctuary Gestures</span>
+          <span class="text-[9px] font-sans non-italic tracking-wider opacity-60">GUIDE</span>
+        </h4>
+        <div class="space-y-3 text-[11px]">
+          <div class="flex items-center gap-3">
+            <span class="text-xl">✊🦋</span>
+            <div class="leading-snug">
+              <strong class="font-bold block text-cream uppercase tracking-tight text-[11px]">Release to breathe</strong>
+              <span class="opacity-80">Exhale butterflies of tension</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xl">🖐️🌸</span>
+            <div class="leading-snug">
+              <strong class="font-bold block text-cream uppercase tracking-tight text-[11px]">Stroke for blossoms</strong>
+              <span class="opacity-80">Sow pastel garden trails</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xl">👆💧</span>
+            <div class="leading-snug">
+              <strong class="font-bold block text-cream uppercase tracking-tight text-[11px]">Tap for rainfall</strong>
+              <span class="opacity-80">Drip gentle soothing rain</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xl">🤏🌱</span>
+            <div class="leading-snug">
+              <strong class="font-bold block text-cream uppercase tracking-tight text-[11px]">Pinch for focus</strong>
+              <span class="opacity-80">Hold a droplet of focus</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xl text-green-200">✋🍄</span>
+            <div class="leading-snug">
+              <strong class="font-bold block text-[#c49a6c] uppercase tracking-tight text-[11px]">Stillness grows life</strong>
+              <span class="opacity-80">Rest to grow forest mushroom</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEBUG STATUS OVERLAY (BOTTOM-LEFT - Styled with opacity background) -->
+      <div id="debug-panel" class="fixed bottom-5 left-5 bg-[#1e1c18]/80 text-[#e0d7c6] font-mono text-[10px] leading-relaxed p-3.5 rounded-xl border border-white/10 z-30 w-52 pointer-events-auto select-none backdrop-blur-md">
+        <h5 class="font-bold text-cream border-b border-white/10 pb-1 mb-1.5 flex items-center justify-between">
+          <span>DEBUG METRICS</span>
+          <button onclick="toggleDebug();" class="text-[9px] hover:text-white border px-1 border-white/20 rounded cursor-pointer">close</button>
+        </h5>
+        <div class="flex justify-between gap-4"><span>Camera:</span> <span id="db-cam" class="text-red-400 font-semibold font-mono">OFF</span></div>
+        <div class="flex justify-between gap-4"><span>Hand Detected:</span> <span id="db-hand" class="text-red-400 font-semibold font-mono">NO</span></div>
+        <div class="flex justify-between gap-4"><span>Face Detected:</span> <span id="db-face" class="text-red-400 font-semibold font-mono">NO</span></div>
+        <div class="flex justify-between gap-4"><span>Gesture:</span> <span id="db-gesture" class="text-amber-300 font-mono">None</span></div>
+        <div class="flex justify-between gap-4"><span>Audio State:</span> <span id="db-audio" class="text-amber-300 font-mono">SUSPENDED</span></div>
+        <div class="flex justify-between gap-4"><span>Engine FPS:</span> <span id="db-fps" class="text-green-400 font-mono">0</span></div>
+      </div>
+
+    </div>
+
+    <!-- MAIN ENGINE IMPLEMENTATION -->
+    <script>
+      /* ENTRANCE/EXIT PHRASES & GENERAL CONFIG */
+      const entrancePhrases = [
+        "Your hands can grow what they once harmed.",
+        "Let your fingers bloom instead of bleed.",
+        "The garden doesn't ask you to be calm. It just gives your hands something else to do.",
+        "Every flower here was once a gesture that chose kindness over harm.",
+        "You're not broken. Your hands just need a different rhythm.",
+        "In this garden, restlessness becomes rain, and rain grows flowers.",
+        "Come as you are. Leave with petals, not wounds."
+      ];
+
+      const exitPhrases = [
+        "The garden stays. Come back when you need it.",
+        "Your flowers will wait for you.",
+        "Close the screen. Your hands remember now.",
+        "Until next time — let the butterflies rest.",
+        "You grew something today. That's not nothing.",
+        "The garden doesn't disappear. It just goes quiet until you return."
+      ];
+
+      // Local State & Setup parameters
+      const videoElement = document.getElementById('webcam');
+      const canvas = document.getElementById('interactive-canvas');
+      const ctx = canvas.getContext('2d');
+      const breathingRing = document.getElementById('breathing-ring');
+
+      let canvasWidth = window.innerWidth;
+      let canvasHeight = window.innerHeight;
+      
+      let isNightMode = false;
+      let isDebugOpen = true;
+
+      // Handle Color Palette Based on Local Hour
+      const curHour = new Date().getHours();
+      if (curHour >= 19 || curHour < 6) {
+        isNightMode = true;
+      }
+
+      /* CORE PARTICLE DATABASES */
+      let butterflies = [];
+      let flowers = [];
+      let raindrops = [];
+      let droplets = [];
+      let mushrooms = [];
+      let splashes = [];
+
+      /* AUDIO MODULE */
+      let audioCtx = null;
+      let bgAmbientNode = null;
+      let rainNoiseNode = null;
+      let rainGainNode = null;
+      let wetLayerNode = null;
+      let wetLayerGainNode = null;
+      let audioInitAttempted = false;
+
+      function createNoiseBuffer() {
+        const sampleRate = audioCtx ? audioCtx.sampleRate : 44100;
+        const bufferSize = 2 * sampleRate;
+        const buffer = (audioCtx || new (window.AudioContext || window.webkitAudioContext)()).createBuffer(1, bufferSize, sampleRate);
+        const output = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+        return buffer;
+      }
+
+      function initAudio() {
+        if (audioCtx) return;
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === "suspended") {
+            audioCtx.resume();
+          }
+          
+          const dbAud = document.getElementById('db-audio');
+          if (dbAud) {
+            dbAud.innerText = audioCtx.state.toUpperCase();
+            if (audioCtx.state === "running") {
+              dbAud.className = "text-green-400 font-semibold font-mono";
+            }
+          }
+
+          const noiseBuf = createNoiseBuffer();
+          
+          // Background ambient loop
+          const bgNode = audioCtx.createBufferSource();
+          bgNode.buffer = noiseBuf;
+          bgNode.loop = true;
+          const bgLP = audioCtx.createBiquadFilter();
+          bgLP.type = "lowpass";
+          bgLP.frequency.value = 1000;
+          const bgGain = audioCtx.createGain();
+          bgGain.gain.setValueAtTime(0.012, audioCtx.currentTime);
+          
+          bgNode.connect(bgLP);
+          bgLP.connect(bgGain);
+          bgGain.connect(audioCtx.destination);
+          bgNode.start();
+          bgAmbientNode = bgNode;
+
+          // Rain node setup
+          const rainNode = audioCtx.createBufferSource();
+          rainNode.buffer = noiseBuf;
+          rainNode.loop = true;
+          const rainLP = audioCtx.createBiquadFilter();
+          rainLP.type = "lowpass";
+          rainLP.frequency.value = 2000;
+          rainGainNode = audioCtx.createGain();
+          rainGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+          
+          rainNode.connect(rainLP);
+          rainLP.connect(rainGainNode);
+          rainGainNode.connect(audioCtx.destination);
+          rainNode.start();
+          rainNoiseNode = rainNode;
+
+          // Wet layer logic
+          const wetNode = audioCtx.createBufferSource();
+          wetNode.buffer = noiseBuf;
+          wetNode.loop = true;
+          const wetLP = audioCtx.createBiquadFilter();
+          wetLP.type = "lowpass";
+          wetLP.frequency.value = 800;
+          wetLayerGainNode = audioCtx.createGain();
+          wetLayerGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+
+          wetNode.connect(wetLP);
+          wetLP.connect(wetLayerGainNode);
+          wetLayerGainNode.connect(audioCtx.destination);
+          wetNode.start();
+          wetLayerNode = wetNode;
+
+          scheduleBirdCalls();
+        } catch(e) {
+          console.warn("Audio Context init blocked or failed: ", e);
+        }
+      }
+
+      // Track clicks/touches for audio activation
+      const activateAudioListener = () => {
+        if (!audioCtx) {
+          initAudio();
+        } else if (audioCtx.state === "suspended") {
+          audioCtx.resume().then(() => {
+            const dbAud = document.getElementById('db-audio');
+            if (dbAud) {
+              dbAud.innerText = audioCtx.state.toUpperCase();
+              dbAud.className = "text-green-400 font-semibold font-mono";
+            }
+          });
+        }
+      };
+      window.addEventListener("click", activateAudioListener, { once: false });
+      window.addEventListener("touchstart", activateAudioListener, { once: false });
+
+      function playSoftButterflyBurst() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const src = audioCtx.createBufferSource();
+          src.buffer = createNoiseBuffer();
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = "bandpass";
+          filter.frequency.setValueAtTime(800, t);
+          filter.Q.setValueAtTime(0.5, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0, t);
+          gainNode.gain.linearRampToValueAtTime(0.04, t + 0.01);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+          src.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          src.start(t);
+        } catch(e){}
+      }
+
+      function playFlowerBloomChime() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(800, t);
+          osc.detune.setValueAtTime(5, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0, t);
+          gainNode.gain.linearRampToValueAtTime(0.06, t + 0.01);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          osc.start(t);
+          osc.stop(t + 0.35);
+        } catch(e){}
+      }
+
+      function playWaterDropletSound() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const src = audioCtx.createBufferSource();
+          src.buffer = createNoiseBuffer();
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = "lowpass";
+          filter.frequency.setValueAtTime(600, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0.06, t);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+          src.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          src.start(t);
+        } catch(e){}
+      }
+
+      function playSoftDropletWetSound() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const src = audioCtx.createBufferSource();
+          src.buffer = createNoiseBuffer();
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = "lowpass";
+          filter.frequency.setValueAtTime(600, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0.02, t);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+          src.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          src.start(t);
+        } catch(e){}
+      }
+
+      let activeMushroomOsc = null;
+      let activeMushroomGain = null;
+
+      function startMushroomGrowHum() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(120, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0, t);
+          gainNode.gain.linearRampToValueAtTime(0.03, t + 0.5);
+
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          osc.start(t);
+
+          activeMushroomOsc = osc;
+          activeMushroomGain = gainNode;
+        } catch(e){}
+      }
+
+      function stopMushroomGrowHum() {
+        if (activeMushroomOsc && activeMushroomGain && audioCtx) {
+          try {
+            const t = audioCtx.currentTime;
+            activeMushroomGain.gain.cancelScheduledValues(t);
+            activeMushroomGain.gain.setValueAtTime(activeMushroomGain.gain.value, t);
+            activeMushroomGain.gain.linearRampToValueAtTime(0, t + 0.3);
+            const oscToStop = activeMushroomOsc;
+            setTimeout(() => {
+              try { oscToStop.stop(); } catch(e){}
+            }, 400);
+          } catch(e){}
+          activeMushroomOsc = null;
+          activeMushroomGain = null;
+        }
+      }
+
+      function playMushroomAppearsChime() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(2000, t);
+          osc.detune.setValueAtTime(10, t);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0.05, t);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          osc.start(t);
+          osc.stop(t + 0.15);
+        } catch(e){}
+      }
+
+      function scheduleBirdCalls() {
+        const nextDelay = (20 + Math.random() * 20) * 1000;
+        setTimeout(() => {
+          playBirdCall();
+          scheduleBirdCalls();
+        }, nextDelay);
+      }
+
+      function playBirdCall() {
+        if (!audioCtx || audioCtx.state === "suspended") return;
+        try {
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(1800, t);
+          osc.frequency.exponentialRampToValueAtTime(1200, t + 0.15);
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(0, t);
+          gainNode.gain.linearRampToValueAtTime(0.02, t + 0.02);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+          const delay = audioCtx.createDelay();
+          delay.delayTime.value = 0.08;
+          const feedback = audioCtx.createGain();
+          feedback.gain.value = 0.2;
+
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          gainNode.connect(delay);
+          delay.connect(feedback);
+          feedback.connect(delay);
+          delay.connect(audioCtx.destination);
+
+          osc.start(t);
+          osc.stop(t + 0.3);
+        } catch(e){}
+      }
+
+      /* ATMOSPHERE VISUAL ELEMENTS */
+      class PollenParticle {
+        constructor() {
+          this.x = Math.random() * canvasWidth;
+          this.y = Math.random() * canvasHeight;
+          this.size = 1 + Math.random() * 2;
+          this.speed = 0.2 + Math.random() * 0.3;
+          this.drift = (Math.random() - 0.5) * 0.15;
+          this.phase = Math.random() * Math.PI * 2;
+        }
+        update() {
+          this.y -= this.speed;
+          this.x += Math.sin(Date.now() * 0.001 + this.phase) * 0.1 + this.drift;
+          if (this.y < 0) {
+            this.y = canvasHeight;
+            this.x = Math.random() * canvasWidth;
+          }
+        }
+        draw() {
+          const alpha = 0.2 + Math.sin(Date.now() * 0.002 + this.phase) * 0.15;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 245, 220, ${alpha})`;
+          ctx.fill();
+        }
+      }
+
+      class FallingPetal {
+        constructor() {
+          this.x = Math.random() * canvasWidth;
+          this.y = 0;
+          this.w = 8 + Math.random() * 4;
+          this.h = 5 + Math.random() * 2;
+          this.speedY = 0.3 + Math.random() * 0.3;
+          this.angle = Math.random() * Math.PI * 2;
+          this.phase = Math.random() * Math.PI * 2;
+        }
+        update() {
+          this.y += this.speedY;
+          this.x += Math.sin(Date.now() * 0.002 + this.phase) * 0.4;
+          this.angle += 0.01;
+        }
+        draw() {
+          drawSketchyEllipse(this.x, this.y, this.w, this.h, this.angle, 0, Math.PI * 2, "rgba(255, 220, 210, 0.6)", "rgba(50, 40, 40, 0.25)");
+        }
+      }
+
+      let pollens = [];
+      let petals = [];
+
+      function initPollens() {
+        pollens = [];
+        for (let i = 0; i < 15; i++) {
+          pollens.push(new PollenParticle());
+        }
+      }
+
+      function scheduleFallingPetal() {
+        const nextDelay = (15 + Math.random() * 5) * 1000;
+        setTimeout(() => {
+          if (isHandDetected) {
+            petals.push(new FallingPetal());
+          }
+          scheduleFallingPetal();
+        }, nextDelay);
+      }
+
+      function drawSoftVignette() {
+        const diag = Math.hypot(canvasWidth, canvasHeight);
+        const grad = ctx.createRadialGradient(canvasWidth/2, canvasHeight/2, diag * 0.50, canvasWidth/2, canvasHeight/2, diag * 0.90);
+        grad.addColorStop(0, "rgba(80, 60, 40, 0)");
+        grad.addColorStop(1, "rgba(80, 60, 40, 0.12)");
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        ctx.restore();
+      }
+
+      // Color shifts
+      let colorShift = 0;
+      let faceGlowShift = 0;
+      let glowActive = false;
+      let glowStartTime = 0;
+      let glowShiftVal = 0;
+
+      function updateColorShift() {
+        colorShift = Math.sin((Date.now() / 30000) * Math.PI * 2) * 0.02;
+      }
+
+      function triggerWarmGlow() {
+        if (glowActive) return;
+        glowActive = true;
+        glowStartTime = Date.now();
+        showTherapeuticFloatingCaption("Eyes closed. Relaxing focus triggers a silent, warm radiant glow.", 0.5, 0.5);
+      }
+
+      function updateWarmGlow() {
+        if (glowActive) {
+          const elapsed = Date.now() - glowStartTime;
+          if (elapsed < 3000) {
+            glowShiftVal = 0.03;
+          } else if (elapsed < 4000) {
+            glowShiftVal = 0.03 * (1 - (elapsed - 3000) / 1000);
+          } else {
+            glowActive = false;
+            glowShiftVal = 0;
+          }
+        } else {
+          glowShiftVal = 0;
+        }
+      }
+
+      // Rain tracking & puddle variables
+      let rainActiveTime = 0;
+      let lastRainTime = 0;
+      let puddleOpacity = 0;
+      let previousRainCount = 0;
+      let rainStartTime = 0;
+
+      function drawPuddle() {
+        if (puddleOpacity > 0) {
+          drawSketchyEllipse(canvasWidth/2, canvasHeight - 20, 100, 20, 0, 0, Math.PI * 2, `rgba(180, 200, 210, ${puddleOpacity})`, `rgba(100, 120, 130, ${puddleOpacity * 1.5})`);
+        }
+      }
+
+      // Easter effect sunlight
+      let rainConcecSeconds = 0;
+      let rainHadBeenLong = false;
+      let sunlightTimer = 0;
+      let sunlightActive = false;
+
+      function drawSunlightOverlay() {
+        if (sunlightActive) {
+          const elapsed = Date.now() - sunlightTimer;
+          if (elapsed < 3000) {
+            const yellowOpacity = 0.04 * (1 - elapsed / 3000);
+            ctx.save();
+            ctx.fillStyle = `rgba(255, 240, 200, ${yellowOpacity})`;
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            ctx.restore();
+          } else {
+            sunlightActive = false;
+          }
+        }
+      }
+
+      // Stable gesture petal
+      let mushroomStableStart = 0;
+      let stablePetalActive = false;
+      let stablePetal = null;
+
+      // Face mesh tracking
+      let faceMeshDetector = null;
+      let isFaceDetected = false;
+      let restingMouthWidth = 0;
+      let restingMouthHeight = 0;
+      let smileCooldown = 0;
+      let eyesClosedTimer = 0;
+      let eyesClosedActive = false;
+      let pitchHistory = [];
+      let lastNodTime = 0;
+      let breezeActive = false;
+      let breezeStartTime = 0;
+
+      // Dandelion farewell ritual
+      let totalGestures = 0;
+      let handAbsentStartTime = Date.now();
+      let dandelionTriggered = false;
+      let dandelionActive = false;
+      let blowingActive = false;
+      let mouthOpenStartTime = 0;
+      let blowingSeeds = [];
+      let dandelionX = 0;
+      let dandelionY = 0;
+      let farewellOverlayActive = false;
+      let farewellPhraseChosen = "";
+      let farewellOverlayStart = 0;
+
+      const dandelionFarewellPhrases = [
+        "Breathe it out. The garden will catch it.",
+        "Let the wind carry what you're ready to release.",
+        "Some things are meant to scatter. Let them.",
+        "You came with restless hands. You leave with seeds in the air."
+      ];
+
+      function triggerGentleBreeze() {
+        breezeActive = true;
+        breezeStartTime = Date.now();
+        flowers.forEach(f => {
+          f.swayOffset = (Math.random() - 0.5) * 8;
+        });
+        showTherapeuticFloatingCaption("A wave of breeze swishes through the garden.", 0.5, 0.85);
+      }
+
+      function updateBreezeSway() {
+        if (breezeActive) {
+          const elapsed = Date.now() - breezeStartTime;
+          if (elapsed > 1000) {
+            breezeActive = false;
+          }
+        }
+      }
+
+      function drawDandelion() {
+        if (!dandelionActive) return;
+        
+        ctx.save();
+        ctx.strokeStyle = "rgba(120, 110, 80, 0.7)";
+        ctx.lineWidth = 2.5;
+        drawSketchyLine(ctx, dandelionX, dandelionY + 15, dandelionX, dandelionY + 100, 0, 0);
+
+        const r = 25;
+        ctx.strokeStyle = "rgba(240, 235, 220, 0.45)";
+        ctx.lineWidth = 1.0;
+        
+        const numLines = 24;
+        for (let i = 0; i < numLines; i++) {
+          const angle = (i * Math.PI * 2) / numLines;
+          const rx = dandelionX + Math.cos(angle) * r;
+          const ry = dandelionY + Math.sin(angle) * r;
+          drawSketchyLine(ctx, dandelionX, dandelionY, rx, ry, 0, 0, 0.95);
+          
+          ctx.beginPath();
+          ctx.arc(rx, ry, 1, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255, 250, 240, 0.85)";
+          ctx.fill();
+        }
+        
+        ctx.beginPath();
+        ctx.arc(dandelionX, dandelionY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(150, 140, 110, 0.8)";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function updateAndDrawBlowingSeeds() {
+        if (!blowingActive) return;
+        
+        for (let sIdx = blowingSeeds.length - 1; sIdx >= 0; sIdx--) {
+          const s = blowingSeeds[sIdx];
+          s.x += s.vx;
+          s.y += s.vy;
+          s.vy -= 0.02;
+          s.vx += Math.sin(Date.now() * 0.01 + s.phase) * 0.1;
+          s.life -= 0.0035;
+
+          if (s.life <= 0) {
+            blowingSeeds.splice(sIdx, 1);
+            continue;
+          }
+
+          const l = s.life;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 250, 240, ${0.8 * l})`;
+          ctx.fill();
+          
+          ctx.strokeStyle = `rgba(140, 130, 110, ${0.4 * l})`;
+          ctx.lineWidth = 0.5;
+          for (let rAngle = 0; rAngle < Math.PI * 2; rAngle += Math.PI * 2 / 3) {
+            const sx = s.x + Math.cos(rAngle) * 5;
+            const sy = s.y + Math.sin(rAngle) * 5;
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y);
+            ctx.lineTo(sx, sy);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawFarewellOverlay() {
+        if (!farewellOverlayActive) return;
+        
+        const elapsed = Date.now() - farewellOverlayStart;
+        let alpha = 0;
+        if (elapsed < 1000) {
+          alpha = 0.3 * (elapsed / 1000);
+        } else if (elapsed < 3000) {
+          alpha = 0.3;
+        } else {
+          alpha = 0.3 * (1 - (elapsed - 3000) / 1000);
+        }
+        
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 3.33})`;
+        ctx.font = "italic 20px Playfair Display, serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(farewellPhraseChosen, canvasWidth / 2, canvasHeight / 2);
+        ctx.restore();
+      }
+
+      // Gesture & State variables
+      let isHandDetected = false;
+      let fistActive = false;
+      let lastFistReleaseTime = 0;
+      let lastGestureTimes = {
+        fistRelease: 0,
+        openStroke: 0,
+        indexTap: 0,
+        pinch: 0,
+        stillGrow: 0
+      };
+
+      // Hand still calculations
+      let palmHistory = []; // stores indices for stationary threshold calculation
+      let stillTimerStart = null;
+      let mainMushroomGrowing = null;
+      let currentActiveGesture = "None";
+
+      // Tutorial Tracker
+      let tutorialActive = false;
+      let tutorialStep = 0;
+      const tutorialStepsCount = 5;
+      let tutorialTimer = 0;
+      let tutorialStateSaved = false;
+
+      // Debug metrics variables
+      let countFPS = 0;
+      let displayFPS = 0;
+      let frameCount = 0;
+      let lastSec = performance.now();
+
+      /* RESIZING HANDLERS */
+      function adaptCanvasSize() {
+        const container = document.getElementById('viewport-container');
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          canvasWidth = rect.width;
+          canvasHeight = rect.height;
+        } else {
+          canvasWidth = window.innerWidth;
+          canvasHeight = window.innerHeight;
+        }
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+      }
+      window.addEventListener('resize', adaptCanvasSize);
+      adaptCanvasSize();
+
+      /* SCREEN STYLING & INTRO ENGINE */
+      // Select random entrance greeting
+      const matchedPhrase = entrancePhrases[Math.floor(Math.random() * entrancePhrases.length)];
+      const entranceBox = document.getElementById('entrance-text');
+      entranceBox.innerText = matchedPhrase;
+      
+      // Animate entrance phrase slide/fade
+      setTimeout(() => {
+        entranceBox.classList.remove('opacity-0');
+        entranceBox.classList.add('opacity-100');
+      }, 300);
+
+      // Fade out entry screen gate
+      setTimeout(() => {
+        entranceBox.classList.add('opacity-0');
+        setTimeout(() => {
+          const gate = document.getElementById('entrance-gate');
+          gate.style.opacity = '0';
+          setTimeout(() => {
+            gate.classList.add('hidden');
+            // Trigger tutorial setup after gate vanishes
+            checkAndRunTutorial();
+          }, 1200);
+        }, 1200);
+      }, 4000);
+
+      // Close / Exit Gate bindings
+      window.addEventListener('beforeunload', (e) => {
+        const exitGate = document.getElementById('exit-gate');
+        const exitText = document.getElementById('exit-text');
+        exitText.innerText = exitPhrases[Math.floor(Math.random() * exitPhrases.length)];
+        
+        exitGate.classList.remove('hidden');
+        // Fast alpha reveal
+        setTimeout(() => {
+          exitGate.style.opacity = '1';
+        }, 50);
+
+        // Delay browser close just slightly to allow aesthetic fade
+        const start = Date.now();
+        while (Date.now() - start < 1000) {
+          // Block briefly to show farewell
+        }
+      });
+
+      function toggleDebug() {
+        const pan = document.getElementById('debug-panel');
+        isDebugOpen = !isDebugOpen;
+        if (isDebugOpen) {
+          pan.classList.remove('hidden');
+        } else {
+          pan.classList.add('hidden');
+        }
+      }
+
+      /* COMPETING THERAPEUTIC CAPTIONS GENERATION */
+      function showTherapeuticFloatingCaption(text, x, y) {
+        // Build floating container
+        const layer = document.getElementById('caption-layer');
+        
+        // Exclude spamming identical captions too closer
+        const prevCaptions = document.querySelectorAll('.floating-caption');
+        for (const prev of prevCaptions) {
+          if (prev.innerText === text) {
+            return; // skips to avoid cluttering visual space
+          }
+        }
+
+        const capt = document.createElement('div');
+        capt.className = 'floating-caption font-serif';
+        capt.innerText = text;
+
+        // Position accurately within absolute layout (X coordinate flipped to mirror space)
+        capt.style.left = `${(1 - x) * 100}%`;
+        capt.style.top = `${y * 100}%`;
+
+        layer.appendChild(capt);
+
+        // Transition fade after life duration
+        setTimeout(() => {
+          capt.style.opacity = '0';
+          setTimeout(() => {
+            capt.remove();
+          }, 1200);
+        }, 4400);
+      }
+
+
+      /* RETRO IMPERFECT / WOBBLY CANVAS DRAWING UTILS */
+      function drawSketchyLine(tx, cx, cy, rx, ry, dx, dy, opacityMultiplier = 1.0) {
+        // Simulates hand-pencil lines by breaking route in wobbly steps
+        tx.save();
+        tx.strokeStyle = `rgba(50, 45, 38, ${0.45 * opacityMultiplier})`;
+        tx.lineWidth = 1.2;
+
+        tx.beginPath();
+        tx.moveTo(cx, cy);
+        
+        // Midpoint calculation + jitter
+        const mx = (cx + rx) / 2 + (Math.random() - 0.5) * 2;
+        const my = (cy + ry) / 2 + (Math.random() - 0.5) * 2;
+        tx.quadraticCurveTo(mx, my, rx, ry);
+        tx.stroke();
+
+        // Draw twice for sketching double-stroke feel
+        tx.beginPath();
+        tx.moveTo(cx + (Math.random() - 0.5) * 1, cy + (Math.random() - 0.5) * 1);
+        const mx2 = (cx + rx) / 2 + (Math.random() - 0.5) * 1.5;
+        const my2 = (cy + ry) / 2 + (Math.random() - 0.5) * 1.5;
+        tx.quadraticCurveTo(mx2, my2, rx + (Math.random() - 0.5) * 1, ry + (Math.random() - 0.5) * 1);
+        tx.stroke();
+
+        tx.restore();
+      }
+
+      function drawSketchyEllipse(cx, cy, rx, ry, rotation, startAng, endAng, fillStyle = null, strokeStyle = null, opacityMultiplier = 1) {
+        if (fillStyle) {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rx, ry, rotation, startAng, endAng);
+          ctx.fillStyle = fillStyle;
+          ctx.fill();
+        }
+
+        // Draw wobbly outline stroke twice
+        const finalStroke = strokeStyle || `rgba(70, 65, 55, ${0.4 * opacityMultiplier})`;
+        ctx.save();
+        ctx.strokeStyle = finalStroke;
+        ctx.lineWidth = 1.0;
+
+        for (let strokePass = 0; strokePass < 2; strokePass++) {
+          const Jx = (Math.random() - 0.5) * 1.2;
+          const Jy = (Math.random() - 0.5) * 1.2;
+          const Jr = (Math.random() - 0.5) * 0.02;
+          ctx.beginPath();
+          ctx.ellipse(cx + Jx, cy + Jy, rx + (Math.random() - 0.5) * 1, ry + (Math.random() - 0.5) * 1, rotation + Jr, startAng, endAng);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+
+      /* MODEL RENDERINGS */
+
+      /* 1. BUTTERFLIES WINGS & TRAILS */
+      class SketchButterfly {
+        constructor(x, y) {
+          this.id = Math.random();
+          this.x = x * canvasWidth;
+          this.y = y * canvasHeight;
+          this.vx = (Math.random() - 0.5) * 2.5;
+          this.vy = -1.2 - Math.random() * 1.5;
+          this.life = 1.0;
+          this.scale = 1.0 + Math.random() * 0.6;
+          this.angle = Math.random() * 0.2;
+        }
+
+        update() {
+          this.x += this.vx;
+          this.y += this.vy;
+          // Upward accentuation
+          this.vy -= 0.04;
+          // Subtle horizontal draft
+          this.vx += Math.sin(Date.now() * 0.007 + this.id) * 0.12;
+          
+          // Life decay over time
+          this.life -= 0.0075;
+        }
+
+        draw() {
+          const l = Math.max(0, Math.min(1.0, this.life));
+          const flap = Math.sin(Date.now() * 0.016 + this.id) * 0.45;
+          const s = this.scale * l;
+
+          // Radial gold center gradient
+          const grad = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, 15 * s);
+          grad.addColorStop(0, `rgba(229, 152, 102, ${0.95 * l})`); // amber center
+          grad.addColorStop(1, `rgba(245, 240, 224, ${0.1 * l})`); // translucent edges
+
+          // Left wing pair
+          const rotL = this.angle - flap;
+          drawSketchyEllipse(this.x - 4 * s, this.y - 3 * s, 10 * s, 6 * s, rotL - 0.2, 0, Math.PI * 2, grad, `rgba(46, 43, 38, ${0.35 * l})`, l);
+          drawSketchyEllipse(this.x - 3 * s, this.y + 3 * s, 7 * s, 4 * s, rotL + 0.4, 0, Math.PI * 2, grad, `rgba(46, 43, 38, ${0.25 * l})`, l);
+
+          // Right wing pair
+          const rotR = this.angle + flap;
+          drawSketchyEllipse(this.x + 4 * s, this.y - 3 * s, 10 * s, 6 * s, rotR + 0.2, 0, Math.PI * 2, grad, `rgba(46, 43, 38, ${0.35 * l})`, l);
+          drawSketchyEllipse(this.x + 3 * s, this.y + 3 * s, 7 * s, 4 * s, rotR - 0.4, 0, Math.PI * 2, grad, `rgba(46, 43, 38, ${0.25 * l})`, l);
+
+          // Tiny antenna lines
+          drawSketchyLine(ctx, this.x, this.y - 2, this.x - 5 * s, this.y - 12 * s, 0, 0, l);
+          drawSketchyLine(ctx, this.x, this.y - 2, this.x + 5 * s, this.y - 12 * s, 0, 0, l);
+        }
+      }
+
+      /* 2. SAGE & PASTEL FLOWERS (TRAILS / OPEN STROKE) */
+       class GardenFlower {
+        constructor(x, y) {
+          this.id = Math.random();
+          this.x = x * canvasWidth;
+          this.y = y * canvasHeight;
+          this.life = 1.0;
+          this.angle = Math.random() * Math.PI * 2;
+          this.rotationV = (Math.random() - 0.5) * 0.01;
+          this.scale = 0.8 + Math.random() * 0.7;
+          
+          this.baseHue = isNightMode ? (15 + Math.random() * 25) : (15 + Math.random() * 30);
+          this.sat = isNightMode ? 85 : 55;
+          this.light = isNightMode ? 65 : 82;
+          this.numPetals = 5 + Math.floor(Math.random() * 2);
+          this.swayOffset = 0;
+          this.fillColor = null;
+        }
+
+        update() {
+          this.angle += this.rotationV;
+          this.y -= 0.1;
+          this.life -= 0.0045;
+        }
+
+        draw() {
+          const l = Math.max(0, Math.min(1.0, this.life));
+          const s = this.scale * l;
+          const outerRadius = 13 * s;
+          const centerRadius = 3.5 * s;
+
+          const pistilColor = isNightMode ? '#ffca28' : '#e6b26c';
+
+          let extraX = 0;
+          if (breezeActive && this.swayOffset) {
+            const progress = (Date.now() - breezeStartTime) / 1000;
+            extraX = Math.sin(progress * Math.PI) * this.swayOffset;
+          }
+          const drawX = this.x + extraX;
+
+          const hue = Math.floor((this.baseHue + (colorShift + glowShiftVal) * 360 + 360) % 360);
+          const petalColor = this.fillColor || `hsla(${hue}, ${this.sat}%, ${this.light}%, ${l})`;
+
+          for (let petalIdx = 0; petalIdx < this.numPetals; petalIdx++) {
+            const rot = (petalIdx * Math.PI * 2 / this.numPetals) + this.angle;
+            const opx = drawX + Math.sin(rot) * (outerRadius * 0.65);
+            const opy = this.y - Math.cos(rot) * (outerRadius * 0.65);
+
+            drawSketchyEllipse(opx, opy, outerRadius * 0.6, outerRadius * 0.4, rot, 0, Math.PI * 2, petalColor, `rgba(46,43,38,${0.35*l})`, l);
+          }
+
+          drawSketchyEllipse(drawX, this.y, centerRadius, centerRadius, 0, 0, Math.PI * 2, pistilColor, `rgba(46,43,38,${0.4*l})`, l);
+        }
+      }
+
+             class SoothingRaindrop {
+        constructor(x, y) {
+          this.x = x * canvasWidth + (Math.random() - 0.5) * 30;
+          this.y = y * canvasHeight;
+          this.vy = 4 + Math.random() * 2;
+          this.gravity = 0.16;
+          this.life = 1.0;
+          this.tilt = (Math.random() - 0.5) * 0.18; // slight angle tilt
+        }
+
+        update() {
+          this.vy += this.gravity;
+          this.y += this.vy;
+          this.x += this.tilt;
+
+          // Splash trigger when hitting ground
+          if (this.y >= canvasHeight - 20) {
+            this.life = 0;
+            const inPuddle = (puddleOpacity > 0.1 && Math.abs(this.x - canvasWidth/2) < 100);
+            splashes.push(new RainSplash(this.x, canvasHeight - 20, inPuddle));
+          }
+        }
+
+        draw() {
+          ctx.save();
+          ctx.strokeStyle = `rgba(100, 120, 140, 0.4)`;
+          ctx.lineWidth = 1.0;
+          drawSketchyLine(ctx, this.x, this.y, this.x + this.tilt * 2, this.y + 12, 0, 0);
+          ctx.restore();
+        }
+      }
+
+      class RainSplash {
+        constructor(x, y, larger = false) {
+          this.x = x;
+          this.y = y;
+          this.radius = 2;
+          this.larger = larger;
+          this.maxRadius = (larger ? 22 : 14) + Math.random() * 8;
+          this.life = 1.0;
+        }
+
+        update() {
+          this.radius += this.larger ? 0.7 : 0.45;
+          this.life -= this.larger ? 0.02 : 0.025;
+        }
+
+        draw() {
+          const l = Math.max(0, Math.min(1.0, this.life));
+          drawSketchyEllipse(this.x, this.y, this.radius, this.radius * 0.4, 0, 0, Math.PI * 2, null, `rgba(120, 140, 160, ${0.35 * l})`, l);
+        }
+      }
+
+      /* 4. PINCHED WATER DROPLET */
+      class PinchedDroplet {
+        constructor(x, y) {
+          this.x = x * canvasWidth;
+          this.y = y * canvasHeight;
+          this.vy = 0.5;
+          this.gravity = 0.18;
+          this.life = 1.0;
+          this.scale = 1.0 + Math.random() * 0.5;
+        }
+
+        update() {
+          this.vy += this.gravity;
+          this.y += this.vy;
+
+          if (this.y >= canvasHeight - 15) {
+            this.life = 0;
+            splashes.push(new RainSplash(this.x, canvasHeight - 15));
+          }
+        }
+
+        draw() {
+          const l = Math.max(0, Math.min(1.0, this.life));
+          const w = 11 * this.scale * l;
+          const h = 16 * this.scale * l;
+
+          ctx.save();
+          // Gradient droplet color (clean aqua)
+          const grad = ctx.createLinearGradient(this.x, this.y - h/2, this.x, this.y + h/2);
+          grad.addColorStop(0, `rgba(174, 198, 207, ${0.1 * l})`);
+          grad.addColorStop(1, `rgba(135, 175, 190, ${0.7 * l})`);
+
+          // Draw droplet teardrop structure (circle at bottom, triangle pointing up)
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y - h / 2); // pointer tip
+          ctx.bezierCurveTo(this.x - w / 2, this.y + h * 0.1, this.x - w / 2, this.y + h / 2, this.x, this.y + h / 2);
+          ctx.bezierCurveTo(this.x + w / 2, this.y + h / 2, this.x + w / 2, this.y + h * 0.1, this.x, this.y - h / 2);
+          ctx.closePath();
+          
+          ctx.fillStyle = grad;
+          ctx.fill();
+
+          // Draw sketch pencil outlines for artisanal teardrop effect
+          ctx.strokeStyle = `rgba(50, 45, 38, ${0.4 * l})`;
+          ctx.lineWidth = 1.0;
+          for (let pass = 0; pass < 2; pass++) {
+            const j = (Math.random() - 0.5) * 1.0;
+            ctx.beginPath();
+            ctx.moveTo(this.x + j, this.y - h / 2);
+            ctx.bezierCurveTo(this.x - w / 2 + j, this.y + h * 0.1, this.x - w / 2, this.y + h / 2, this.x, this.y + h / 2 + j);
+            ctx.bezierCurveTo(this.x + w / 2, this.y + h / 2, this.x + w / 2 - j, this.y + h * 0.1, this.x + j, this.y - h / 2);
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+      }
+
+      /* 5. MINDFUL COZY MUSHROOM */
+      class CuteMushroom {
+        constructor(x, y) {
+          this.x = x * canvasWidth;
+          this.y = y * canvasHeight;
+          this.scale = 0.05; // starts tiny
+          this.life = 1.0; 
+          this.capColor = '#c49a6c'; // warm brown
+          this.stemColor = '#e8dcc8'; // cozy cream
+          this.isDecaying = false;
+          this.birthday = Date.now();
+          this.hasPlayedAppears = false;
+          
+          // Start growing hum when initialized
+          startMushroomGrowHum();
+        }
+
+        getAge() {
+          return (Date.now() - this.birthday) / 1000;
+        }
+
+        update() {
+          if (!this.isDecaying) {
+            if (this.scale < 1.0) {
+              this.scale += 0.035;
+              if (this.scale >= 1.0) {
+                // Stop hum when fully grown
+                stopMushroomGrowHum();
+              }
+            }
+          } else {
+            this.life -= 0.0035;
+            if (this.life <= 0) {
+              stopMushroomGrowHum();
+            }
+          }
+        }
+
+        draw() {
+          const l = Math.max(0, Math.min(1.0, this.life));
+          const s = this.scale * l;
+          
+          // Chime on first frame
+          if (!this.hasPlayedAppears) {
+            playMushroomAppearsChime();
+            this.hasPlayedAppears = true;
+          }
+
+          const cw = 30 * s; // cap width
+          const ch = 20 * s; // cap height
+          const sw = 9 * s;  // stem width
+          const sh = 20 * s; // stem height
+
+          ctx.save();
+
+          // Draw Stem
+          ctx.fillStyle = this.stemColor;
+          ctx.beginPath();
+          ctx.rect(this.x - sw / 2, this.y, sw, sh);
+          ctx.fill();
+
+          // Double rough stem outlines
+          drawSketchyEllipse(this.x, this.y + sh/2, sw/2, sh/2, 0, Math.PI, Math.PI*2, null, `rgba(46, 43, 38, ${0.25 * l})`, l);
+          drawSketchyLine(ctx, this.x - sw / 2, this.y, this.x - sw / 2, this.y + sh, 0, 0, l);
+          drawSketchyLine(ctx, this.x + sw / 2, this.y, this.x + sw / 2, this.y + sh, 0, 0, l);
+
+          // Draw Cap
+          const fillCapGrad = ctx.createLinearGradient(this.x, this.y - ch, this.x, this.y + 2);
+          fillCapGrad.addColorStop(0, this.capColor);
+          fillCapGrad.addColorStop(1, '#9e7345');
+
+          ctx.fillStyle = fillCapGrad;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y + 2, cw / 2, Math.PI, 0, false);
+          ctx.closePath();
+          ctx.fill();
+
+          // Sketch cap edges
+          ctx.strokeStyle = `rgba(46,43,38,${0.45 * l})`;
+          ctx.lineWidth = 1.2;
+
+          for (let p = 0; p < 2; p++) {
+            const jpY = (Math.random() - 0.5) * 1.5;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y + 2 + jpY, (cw / 2) + p * 0.5, Math.PI, 0, false);
+            ctx.closePath();
+            ctx.stroke();
+          }
+
+          // Dots on the mushroom cap
+          ctx.fillStyle = 'rgba(245, 240, 224, 0.75)';
+          const dotSpecs = [
+            [-0.2, -0.6, 2],
+            [0.2, -0.5, 1.5],
+            [-0.35, -0.2, 1.8],
+            [0.3, -0.2, 2.2],
+            [0, -0.8, 1.4]
+          ];
+          for (const [dx, dy, dr] of dotSpecs) {
+            ctx.beginPath();
+            ctx.arc(this.x + (dx * cw/2), this.y + 2 + (dy * ch/2), dr * s, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Easter egg: Snail on cap if age > 8 seconds
+          const age = this.getAge();
+          if (age > 8) {
+            const sx = this.x - cw * 0.15;
+            const sy = this.y + 1 - ch * 0.45;
+
+            // Draw shell
+            const sr = 4 * s;
+            ctx.beginPath();
+            ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(185, 125, 80, 0.85)";
+            ctx.fill();
+            ctx.strokeStyle = "rgba(46, 43, 38, 0.6)";
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+
+            // Spiral line
+            ctx.beginPath();
+            ctx.arc(sx, sy, sr * 0.5, 0, Math.PI, false);
+            ctx.stroke();
+
+            // Snail head
+            const hx = sx + 5 * s;
+            const hy = sy + 1 * s;
+            ctx.beginPath();
+            ctx.arc(hx, hy, 2 * s, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(224, 210, 180, 0.9)";
+            ctx.fill();
+            ctx.stroke();
+
+            // Twitch antennae when between 8.0 and 8.1s
+            const antennaeAngle = (age >= 8 && age <= 8.12) ? -0.3 : 0.22;
+            
+            ctx.beginPath();
+            ctx.moveTo(hx, hy);
+            ctx.lineTo(hx + 3 * s * Math.cos(antennaeAngle), hy - 3 * s * Math.sin(antennaeAngle));
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(hx, hy);
+            ctx.lineTo(hx + 3 * s * Math.cos(antennaeAngle + 0.5), hy - 3 * s * Math.sin(antennaeAngle + 0.5));
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+      }
+
+
+      /* GESTURE CLASSIFICATION & TELEMETRY SYSTEM */
+
+      function checkFist(landmarks, hSize) {
+        // Safe check tip coordinates proximity to wrist
+        // Distances landmarks to wrist (0) normalized
+        const idxD = distL(landmarks[8], landmarks[0]) / hSize;
+        const midD = distL(landmarks[12], landmarks[0]) / hSize;
+        const ringD = distL(landmarks[16], landmarks[0]) / hSize;
+        const pinkD = distL(landmarks[20], landmarks[0]) / hSize;
+
+        // Fist detected when fingers are strongly tensed / curled
+        return (idxD < 0.9 && midD < 0.9 && ringD < 0.9 && pinkD < 0.9);
+      }
+
+      function checkOpenHand(landmarks, hSize) {
+        const idxD = distL(landmarks[8], landmarks[0]) / hSize;
+        const midD = distL(landmarks[12], landmarks[0]) / hSize;
+        const ringD = distL(landmarks[16], landmarks[0]) / hSize;
+        const pinkD = distL(landmarks[20], landmarks[0]) / hSize;
+
+        // Spread hand check
+        return (idxD > 1.3 && midD > 1.3 && ringD > 1.3 && pinkD > 1.2);
+      }
+
+      function checkPinch(landmarks, hSize) {
+        // Distance thumb tip (4) to index tip (8)
+        const dTip = distL(landmarks[4], landmarks[8]) / hSize;
+        
+        // Other fingers must be spread
+        const midD = distL(landmarks[12], landmarks[0]) / hSize;
+        const ringD = distL(landmarks[16], landmarks[0]) / hSize;
+        const pinkD = distL(landmarks[20], landmarks[0]) / hSize;
+
+        return (dTip < 0.32 && midD > 1.25 && ringD > 1.25 && pinkD > 1.15);
+      }
+
+      function checkIndexExtended(landmarks, hSize) {
+        // Index finger extended, others curled
+        const idxD = distL(landmarks[8], landmarks[0]) / hSize;
+        const midD = distL(landmarks[12], landmarks[0]) / hSize;
+        const ringD = distL(landmarks[16], landmarks[0]) / hSize;
+        const pinkD = distL(landmarks[20], landmarks[0]) / hSize;
+
+        return (idxD > 1.3 && midD < 0.95 && ringD < 0.95 && pinkD < 0.95);
+      }
+
+      function distL(p1, p2) {
+        return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      }
+
+
+      /* TACTILE INTERACTION ENGINE & MEDIAPIPE FRAME WORKER */
+
+      let handsDetector = null;
+ 
+      function startMediaPipeEngine() {
+        try {
+          const hands = new Hands({
+            locateFile: (file) => {
+              if (file.includes("hands")) {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+              } else if (file.includes("face_mesh") || file.includes("geometry") || file.includes("face_landmarks")) {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+              }
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+          });
+ 
+          hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.55,
+            minTrackingConfidence: 0.55
+          });
+ 
+          hands.onResults(handleMediaPipeFrameResults);
+          handsDetector = hands;
+ 
+          // Initialize FaceMesh parallel model
+          try {
+            const faceMesh = new FaceMesh({
+              locateFile: (file) => {
+                if (file.includes("hands")) {
+                  return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                } else if (file.includes("face_mesh") || file.includes("geometry") || file.includes("face_landmarks")) {
+                  return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+              }
             });
-            reportDiv.style.display = 'none';
-            cameraOverlay.style.display = 'none';
-
-            // ---------- 全局状态 ----------
-            let canvas = document.getElementById('outputCanvas'), ctx = canvas.getContext('2d');
-            let video = document.getElementById('webcam');
-            let introDiv = document.getElementById('introText');
-            let effects = [];
-            let captions = [];
-            let lastTriggerTime = 0;
-            const COOLDOWN_MS = 800;
-            let currentGesture = "NONE";
-            let handLandmarks = null;
-            let handDetectedFlag = false;
-            let lastPalmPos = { x: 0.5, y: 0.5 };
-            let stillTimer = 0;
-            let lastFrameTime = performance.now();
-            let fps = 0, frameCount = 0;
-            let lastFlowerSpawn = 0;
-            const FLOWER_SPAWN_INTERVAL = 70;
-            let prevIndexTip = { x: 0, y: 0 };
-            let tapCooldown = 0;
-            let fistReleasedAt = 0, openHoldStart = 0, persistenceRingActive = false, ringCenter = { x: 0, y: 0 }, ringProgress = 0;
-            let stillBreathingActive = false;
-            let nightMode = false;
-            function updateNightMode() { const hour = new Date().getHours(); nightMode = (hour >= 19 || hour < 6); }
-            updateNightMode();
-
-            // 面部相关
-            let faceLandmarks = null;
-            let faceDetectedFlag = false;
-            let smileCooldown = 0;
-            let eyesClosedTimer = 0;
-            let previousNoseY = 0;
-            let headNodDetected = false;
-
-            // 手势计数 / 蒲公英
-            let totalGestures = 0;
-            let handAbsentTimer = 0;
-            let dandelionActive = false;
-            let dandelionSeeds = [];
-            let farewellDisplayed = false;
-            let dandelionStem = null;
-
-            // 环境特效
-            let pollenParticles = [];
-            let occasionalPetals = [];
-            let puddleOpacity = 0;
-            let rainActiveTime = 0;
-            let lastRainFrame = false;
-            let sunlightEffectActive = false;
-            let sunlightUntil = 0;
-            let lastStillPetalSpawn = 0;
-            const STILL_PETAL_COOLDOWN = 5000;
-            let colorShift = 0;
-
-            // 种子球记录
-            let gestureTypesUsed = [];
-            try {
-                const stored = localStorage.getItem('gestureTypesUsed');
-                if (stored) gestureTypesUsed = JSON.parse(stored);
-            } catch(e) { gestureTypesUsed = []; }
-
-            // 性能模式
-            let fpsHistory = [];
-            let lowPerformanceMode = false;
-            let lowPerfStartTime = 0;
-            let particleMultiplier = 1.0;
-            const NORMAL_POLLEN = 14;
-            const LOW_POLLEN = 8;
-
-            // ---------- 辅助函数 ----------
-            function randomRange(min, max) { return min + Math.random() * (max - min); }
-            function showCaption(text, x, y, chance = 1.0) {
-                if (Math.random() > chance) return;
-                captions.push({ text, x: x - 50, y: y - 30, life: 1.0 });
+            faceMesh.setOptions({
+              maxNumFaces: 1,
+              refineLandmarks: true,
+              minDetectionConfidence: 0.5,
+              minTrackingConfidence: 0.5
+            });
+            faceMesh.onResults(handleFaceMeshResults);
+            faceMeshDetector = faceMesh;
+          } catch(faceErr) {
+            console.warn("FaceMesh loading skipped or failed: ", faceErr);
+          }
+ 
+          startWebcamFeed(hands);
+        } catch (e) {
+          console.error("Critical crash in MediaPipe init:", e);
+          showCameraAccessError();
+        }
+      }
+ 
+      async function startWebcamFeed(handsObj) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: "user"
             }
+          });
+          
+          videoElement.srcObject = stream;
+ 
+          // Success trigger
+          videoElement.onloadedmetadata = () => {
+            document.getElementById('camera-loader').classList.add('hidden');
+            document.getElementById('db-cam').innerText = "ON";
+            document.getElementById('db-cam').className = "text-green-400 font-semibold";
+            videoElement.play().catch(playErr => {
+              console.warn("Autoplay / play request was interrupted or blocked:", playErr);
+            });
+          };
+ 
+          const camInstance = new Camera(videoElement, {
+            onFrame: async () => {
+              try {
+                const tasks = [handsObj.send({ image: videoElement })];
+                if (faceMeshDetector) {
+                  tasks.push(faceMeshDetector.send({ image: videoElement }));
+                }
+                await Promise.all(tasks);
+              } catch (frameErr) {
+                console.error("Frame evaluation failed:", frameErr);
+              }
+            },
+            width: 640,
+            height: 480
+          });
+ 
+          camInstance.start();
+        } catch (mediaErr) {
+          console.error("Webcam capturing blocked:", mediaErr);
+          showCameraAccessError();
+        }
+      }
 
-            function updateGestureUsed(gestureName) {
-                if (!gestureName || gestureName === "NONE") return;
-                let mapped = "";
-                if (gestureName === "FIST") mapped = "fist";
-                else if (gestureName === "OPEN") mapped = "open";
-                else if (gestureName === "TAP") mapped = "tap";
-                else if (gestureName === "PINCH") mapped = "pinch";
-                else if (gestureName === "STILL") mapped = "still";
-                else return;
-                if (!gestureTypesUsed.includes(mapped)) {
-                    gestureTypesUsed.push(mapped);
-                    localStorage.setItem('gestureTypesUsed', JSON.stringify(gestureTypesUsed));
-                    if (gestureTypesUsed.length >= 5 && !localStorage.getItem('seedBallHintShown')) {
-                        const hintDiv = document.getElementById('seedBallHint');
-                        hintDiv.innerText = seedBallHintText;
-                        hintDiv.style.display = 'block';
-                        setTimeout(() => {
-                            hintDiv.style.opacity = '0';
-                            setTimeout(() => { hintDiv.style.display = 'none'; hintDiv.style.opacity = ''; }, 1000);
-                        }, 5000);
-                        localStorage.setItem('seedBallHintShown', 'true');
-                    }
-                }
-            }
+      function showCameraAccessError() {
+        document.getElementById('camera-loader').classList.add('hidden');
+        document.getElementById('camera-error-screen').classList.remove('hidden');
+        document.getElementById('db-cam').innerText = "DENIED";
+        document.getElementById('db-cam').className = "text-red-500 font-bold animate-pulse";
+      }
 
-            // 性能动态调整花粉
-            function adjustPollenCount() {
-                if (lowPerformanceMode && pollenParticles.length > LOW_POLLEN) {
-                    pollenParticles = pollenParticles.slice(0, LOW_POLLEN);
-                } else if (!lowPerformanceMode && pollenParticles.length < NORMAL_POLLEN) {
-                    let needed = NORMAL_POLLEN - pollenParticles.length;
-                    for (let i = 0; i < needed; i++) {
-                        pollenParticles.push({
-                            x: Math.random() * canvas.width,
-                            y: Math.random() * canvas.height,
-                            radius: randomRange(1, 3),
-                            speedY: randomRange(0.2, 0.6),
-                            speedX: randomRange(-0.2, 0.2),
-                            phase: Math.random() * Math.PI * 2
-                        });
-                    }
-                }
-            }
+      // Track index velocity for tap detection
+      let prevIndexY = 0;
+      let prevIndexTime = 0;
 
-            function updatePerformanceMode(currentFPS) {
-                fpsHistory.push(currentFPS);
-                if (fpsHistory.length > 15) fpsHistory.shift();
-                const avgFPS = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
-                if (!lowPerformanceMode && avgFPS < 30 && fpsHistory.length > 5) {
-                    lowPerformanceMode = true;
-                    lowPerfStartTime = Date.now();
-                    particleMultiplier = 0.6;
-                    adjustPollenCount();
-                } else if (lowPerformanceMode && avgFPS > 45 && Date.now() - lowPerfStartTime > 5000) {
-                    lowPerformanceMode = false;
-                    particleMultiplier = 1.0;
-                    adjustPollenCount();
-                }
-            }
-            function getButterflyCount() { return lowPerformanceMode ? 4 : 7; }
-            function getRaindropCount() { return lowPerformanceMode ? 2 : 3; }
+      function handleMediaPipeFrameResults(results) {
+        const panHand = document.getElementById('db-hand');
+        const panGest = document.getElementById('db-gesture');
 
-            // ---------- 音频系统 ----------
-            let audioCtx = null;
-            let audioState = "SUSPENDED";
-            let rainNoiseNode = null, rainGainNode = null, rainFilter = null;
-            let ambientNoiseNode = null, ambientGainNode = null;
+        // Check if hand actually visible
+        if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+          isHandDetected = false;
+          panHand.innerText = "NO";
+          panHand.className = "text-red-400 font-semibold";
+          currentActiveGesture = "None";
+          panGest.innerText = "None";
 
-            function initAudio() {
-                if (audioCtx) return;
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const bufferSize = 4096;
-                const noiseBuffer = (ctx) => {
-                    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-                    const data = buffer.getChannelData(0);
-                    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-                    return buffer;
-                };
-                const whiteNoise = noiseBuffer(audioCtx);
-                ambientNoiseNode = audioCtx.createBufferSource();
-                ambientNoiseNode.buffer = whiteNoise;
-                ambientNoiseNode.loop = true;
-                ambientGainNode = audioCtx.createGain();
-                ambientGainNode.gain.value = 0.012;
-                const ambientFilter = audioCtx.createBiquadFilter();
-                ambientFilter.type = "lowpass";
-                ambientFilter.frequency.value = 1000;
-                ambientNoiseNode.connect(ambientFilter).connect(ambientGainNode).connect(audioCtx.destination);
-                ambientNoiseNode.start();
+          // If hand vanishes, decay mushroom
+          if (mainMushroomGrowing) {
+            mainMushroomGrowing.isDecaying = true;
+            mainMushroomGrowing = null;
+          }
 
-                const rainBuf = noiseBuffer(audioCtx);
-                rainNoiseNode = audioCtx.createBufferSource();
-                rainNoiseNode.buffer = rainBuf;
-                rainNoiseNode.loop = true;
-                rainFilter = audioCtx.createBiquadFilter();
-                rainFilter.type = "lowpass";
-                rainFilter.frequency.value = 2000;
-                rainGainNode = audioCtx.createGain();
-                rainGainNode.gain.value = 0;
-                rainNoiseNode.connect(rainFilter).connect(rainGainNode).connect(audioCtx.destination);
-                rainNoiseNode.start();
-            }
+          breathingRing.style.transform = "scale(1)"; // reset breathing size
+          breathingRing.style.borderColor = "rgba(155, 174, 138, 0.08)";
+          return;
+        }
 
-            function resumeAudioOnInteraction() {
-                if (audioCtx && audioCtx.state === "suspended") {
-                    audioCtx.resume().then(() => {
-                        audioState = "RUNNING";
-                        document.getElementById('audioState').innerText = "RUNNING";
-                    });
-                } else if (!audioCtx) initAudio();
-            }
-            document.body.addEventListener('click', resumeAudioOnInteraction);
-            document.body.addEventListener('touchstart', resumeAudioOnInteraction);
+        isHandDetected = true;
+        panHand.innerText = "YES";
+        panHand.className = "text-green-400 font-semibold";
 
-            function playButterflySound() { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const noise = audioCtx.createBufferSource(); const buf = audioCtx.createBuffer(1, 2048, audioCtx.sampleRate); const data = buf.getChannelData(0); for (let i=0;i<2048;i++) data[i]=Math.random()*2-1; noise.buffer = buf; const filter = audioCtx.createBiquadFilter(); filter.type = "bandpass"; filter.frequency.value = 800; filter.Q.value = 0.5; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.exponentialRampToValueAtTime(0.08, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.2); noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(); noise.stop(now+0.22); }
-            function playChime() { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.type = "sine"; osc.frequency.value = 805; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.06, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.3); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.32); }
-            function updateRainVolume(count) { if (!rainGainNode || audioCtx?.state !== "running") return; let desired = Math.min(0.08, count * 0.008 * particleMultiplier); rainGainNode.gain.linearRampToValueAtTime(desired, audioCtx.currentTime + 0.05); }
-            function playDropSound() { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const noise = audioCtx.createBufferSource(); const buf = audioCtx.createBuffer(1, 2000, audioCtx.sampleRate); const d = buf.getChannelData(0); for (let i=0;i<2000;i++) d[i]=Math.random()*2-1; noise.buffer = buf; const filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 600; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.05, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.15); noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(); noise.stop(now+0.16); }
-            function playMushroomHum() { if (!audioCtx) return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.value = 120; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.03, now+0.5); gain.gain.exponentialRampToValueAtTime(0.0001, now+1); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+1); }
-            function playMushroomBell() { if (!audioCtx) return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.value = 2010; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.1); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.12); }
-            setInterval(() => { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.setValueAtTime(1800, now); osc.frequency.exponentialRampToValueAtTime(1200, now+0.15); const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.2); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.2); }, 25000 + Math.random()*15000);
+        const landmarks = results.multiHandLandmarks[0];
 
-            // ---------- 特效生成 ----------
-            function addButterflyBurst(x, y) {
-                let count = getButterflyCount();
-                for (let i = 0; i < count; i++) effects.push({ type: 'butterfly', x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 2.2, vy: -Math.random() * 2 - 1, life: 1, angle: Math.random() * Math.PI * 2 });
-                showCaption(gestureCaptions.FIST, x, y - 40, 1.0);
-                playButterflySound();
-                totalGestures++;
-                updateGestureUsed("FIST");
-            }
-            function addFlower(x, y) {
-                effects.push({ type: 'flower', x, y, life: 1.0, petalColors: ['#e8c4b8', '#f0d8c0', '#f5e8c8', '#fce4c8', '#f8d8b0'] });
-                if (Math.random() < 0.2) showCaption(gestureCaptions.OPEN, x, y - 20, 0.25);
-                playChime();
-                totalGestures++;
-                updateGestureUsed("OPEN");
-            }
-            function addRain(x, y) {
-                let count = getRaindropCount();
-                for (let i = 0; i < count; i++) effects.push({ type: 'rain', x: x + (Math.random() - 0.5) * 12, y, vy: 2 + Math.random() * 3, life: 1, tilt: (Math.random() - 0.5) * 0.3 });
-                if (Math.random() < 0.25) showCaption(gestureCaptions.TAP, x, y - 25, 0.25);
-                totalGestures++;
-                updateGestureUsed("TAP");
-            }
-            function addTeardrop(x, y) {
-                effects.push({ type: 'droplet', x, y, vy: 2, life: 1 });
-                showCaption(gestureCaptions.PINCH, x, y - 20, 1.0);
-                playDropSound();
-                totalGestures++;
-                updateGestureUsed("PINCH");
-            }
-            function addMushroom(x, y) {
-                effects.push({ type: 'mushroom', x, y, life: 1.0, grown: 0.2, birth: Date.now(), snailDrawn: false });
-                showCaption(gestureCaptions.STILL, x, y - 35, 1.0);
-                playMushroomHum();
-                playMushroomBell();
-                totalGestures++;
-                updateGestureUsed("STILL");
-            }
+        // Frame rate ticks
+        frameCount++;
+        
+        // Wrist (0), Knuckle (9)
+        const sizeHand = distL(landmarks[0], landmarks[9]);
 
-            // 环境初始化
-            function initPollen() {
-                let count = lowPerformanceMode ? LOW_POLLEN : NORMAL_POLLEN;
-                pollenParticles = [];
-                for (let i = 0; i < count; i++) {
-                    pollenParticles.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, radius: randomRange(1, 3), speedY: randomRange(0.2, 0.6), speedX: randomRange(-0.2, 0.2), phase: Math.random() * Math.PI * 2 });
-                }
-            }
-            function spawnOccasionalPetal() {
-                if (occasionalPetals.length > (lowPerformanceMode ? 4 : 6)) return;
-                occasionalPetals.push({ x: Math.random() * canvas.width, y: 0, width: randomRange(8, 12), height: randomRange(5, 7), angle: 0, speedY: randomRange(0.3, 0.7), swingAmp: randomRange(10, 20), swingFreq: 0.02, swingPhase: 0, color: `rgba(255, ${210 + Math.random() * 30}, ${200 + Math.random() * 50}, 0.7)` });
-            }
-            setInterval(() => { if (Math.random() < 0.2) spawnOccasionalPetal(); }, lowPerformanceMode ? 27000 : 17000);
+        // Hand movement stillness tracker 
+        palmHistory.push({ x: landmarks[9].x, y: landmarks[9].y, time: Date.now() });
+        if (palmHistory.length > 45) {
+          palmHistory.shift();
+        }
 
-            function shiftColor(hex, shiftVal) {
-                let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-                let shift = shiftVal * 30;
-                if (nightMode) { r = Math.min(255, r + 12); g = Math.min(255, g + 4); b = Math.max(0, b - 8); }
-                r = Math.min(255, Math.max(0, r + shift * 2));
-                g = Math.min(255, Math.max(0, g - shift));
-                b = Math.min(255, Math.max(0, b - shift * 1.5));
-                return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
-            }
+        // Calculate max variance during period (hand stillness)
+        let isStationary = false;
+        if (palmHistory.length >= 30) {
+          let minX = 1, maxX = 0, minY = 1, maxY = 0;
+          for (const pos of palmHistory) {
+            if (pos.x < minX) minX = pos.x;
+            if (pos.x > maxX) maxX = pos.x;
+            if (pos.y < minY) minY = pos.y;
+            if (pos.y > maxY) maxY = pos.y;
+          }
+          if ((maxX - minX) < 0.015 && (maxY - minY) < 0.015) {
+            isStationary = true;
+          }
+        }
 
-            // 手势识别
-            function detectGesture(lm) {
-                if (!lm) return "NONE";
-                const palmCenter = { x: (lm[0].x + lm[5].x + lm[17].x) / 3, y: (lm[0].y + lm[5].y + lm[17].y) / 3 };
-                const dists = [4, 8, 12, 16, 20].map(i => Math.hypot(lm[i].x - palmCenter.x, lm[i].y - palmCenter.y));
-                const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-                const move = Math.hypot(lm[0].x - lastPalmPos.x, lm[0].y - lastPalmPos.y);
-                lastPalmPos = { x: lm[0].x, y: lm[0].y };
-                if (move < 0.003) stillTimer += 16; else stillTimer = 0;
-                if (stillTimer > 1400) return "STILL";
-                if (dists.every(d => d < 0.26)) return "FIST";
-                if (dists.every(d => d > 0.38)) return "OPEN";
-                if (pinchDist < 0.045) return "PINCH";
-                const idxTip = lm[8];
-                const deltaY = Math.abs(idxTip.y - prevIndexTip.y);
-                prevIndexTip = { x: idxTip.x, y: idxTip.y };
-                if (deltaY > 0.018 && Date.now() > tapCooldown) { tapCooldown = Date.now() + 400; return "TAP"; }
-                return "NONE";
-            }
+        // Evaluate core states
+        const insideFist = checkFist(landmarks, sizeHand);
+        const insideOpen = checkOpenHand(landmarks, sizeHand);
+        const insidePinch = checkPinch(landmarks, sizeHand);
+        const insideIndexExtended = checkIndexExtended(landmarks, sizeHand);
 
-            // 面部交互
-            function processFaceLandmarks(landmarks) {
-                if (!landmarks) return;
-                const leftCorner = landmarks[61], rightCorner = landmarks[291], upperLip = landmarks[13], lowerLip = landmarks[14];
-                const mouthWidth = Math.hypot(leftCorner.x - rightCorner.x, leftCorner.y - rightCorner.y);
-                const mouthHeight = Math.abs(upperLip.y - lowerLip.y);
-                if (mouthHeight / (mouthWidth + 0.001) > 0.08 && Date.now() > smileCooldown) {
-                    smileCooldown = Date.now() + 3000;
-                    let flowerX = (leftCorner.x + rightCorner.x) / 2 * canvas.width;
-                    let flowerY = (leftCorner.y + upperLip.y) / 2 * canvas.height;
-                    effects.push({ type: 'flower', x: flowerX, y: flowerY, life: 1.0, petalColors: ['#f8c8b8', '#fcd0c0'] });
-                }
-                const leftEyeOpen = Math.abs(landmarks[159].y - landmarks[145].y);
-                const rightEyeOpen = Math.abs(landmarks[386].y - landmarks[374].y);
-                if (leftEyeOpen < 0.012 && rightEyeOpen < 0.012) {
-                    eyesClosedTimer += 0.033;
-                    if (eyesClosedTimer > 2.0) colorShift = Math.min(0.05, colorShift + 0.003);
-                } else { eyesClosedTimer = 0; if (colorShift > 0) colorShift *= 0.99; }
-                const noseY = landmarks[1].y;
-                if (previousNoseY !== 0) {
-                    const delta = noseY - previousNoseY;
-                    if (Math.abs(delta) > 0.018 && !headNodDetected) {
-                        headNodDetected = true;
-                        effects.forEach(e => { if (e.type === 'flower') e.sway = 1.0; });
-                        setTimeout(() => headNodDetected = false, 800);
-                    }
-                }
-                previousNoseY = noseY;
+        // 1. FIST & RELEASE TRACKER
+        if (insideFist) {
+          fistActive = true;
+          currentActiveGesture = "Fist";
+          panGest.innerText = "✊ Fist Clenched";
+        } else if (fistActive && insideOpen) {
+          // Trigger releasing action!
+          const timeNow = Date.now();
+          if (timeNow - lastGestureTimes.fistRelease > 800) {
+            // Burst butterflies
+            const burstCount = 6 + Math.floor(Math.random() * 3); // 6 to 8
+            for (let b = 0; b < burstCount; b++) {
+              butterflies.push(new SketchButterfly(landmarks[9].x, landmarks[9].y));
             }
+            lastGestureTimes.fistRelease = timeNow;
+            fistActive = false;
+            lastFistReleaseTime = timeNow; // reset timer for persistence ring
 
-            // 蒲公英
-            function checkDandelionTrigger() {
-                if (dandelionActive) return;
-                if (totalGestures >= 10 && handAbsentTimer >= 10) {
-                    dandelionActive = true;
-                    dandelionStem = { x: canvas.width / 2, y: canvas.height / 2 };
-                    dandelionSeeds = [];
-                    farewellDisplayed = false;
-                }
-            }
-            function drawDandelion() {
-                if (!dandelionActive) return;
-                ctx.beginPath();
-                ctx.moveTo(dandelionStem.x, dandelionStem.y + 40);
-                ctx.lineTo(dandelionStem.x, dandelionStem.y + 100);
-                ctx.strokeStyle = "#7c6b4e";
-                ctx.lineWidth = 3;
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(dandelionStem.x, dandelionStem.y + 40, 24, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(245,240,210,0.7)";
-                ctx.fill();
-                for (let i = 0; i < 36; i++) {
-                    let ang = i * Math.PI * 2 / 36;
-                    ctx.beginPath();
-                    ctx.moveTo(dandelionStem.x, dandelionStem.y + 40);
-                    ctx.lineTo(dandelionStem.x + Math.cos(ang) * 24, dandelionStem.y + 40 + Math.sin(ang) * 24);
-                    ctx.strokeStyle = "rgba(200,190,160,0.6)";
-                    ctx.stroke();
-                }
-                if (!farewellDisplayed && dandelionSeeds.length === 0 && faceLandmarks) {
-                    const upper = faceLandmarks[13], lower = faceLandmarks[14];
-                    if (Math.abs(upper.y - lower.y) > 0.045) {
-                        for (let s = 0; s < 12; s++) {
-                            let angle = Math.random() * Math.PI * 2;
-                            let speed = randomRange(0.8, 1.5);
-                            dandelionSeeds.push({ x: dandelionStem.x, y: dandelionStem.y + 40, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 0.6, life: 1.0 });
-                        }
-                        farewellDisplayed = true;
-                    }
-                }
-                for (let i = 0; i < dandelionSeeds.length; i++) {
-                    let s = dandelionSeeds[i];
-                    ctx.beginPath();
-                    ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
-                    ctx.fillStyle = `rgba(245,235,200,${s.life * 0.8})`;
-                    ctx.fill();
-                    s.x += s.vx;
-                    s.y += s.vy;
-                    s.vy += 0.03;
-                    s.life -= 0.005;
-                }
-                dandelionSeeds = dandelionSeeds.filter(s => s.life > 0);
-                if (farewellDisplayed && dandelionSeeds.length === 0 && !window.dandelionOverlayShown) {
-                    window.dandelionOverlayShown = true;
-                    let overlay = document.createElement('div');
-                    let phrase = dandelionFarewellPhrases[Math.floor(Math.random() * dandelionFarewellPhrases.length)];
-                    overlay.innerText = phrase;
-                    overlay.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:1.4rem; background:rgba(0,0,0,0.5); padding:20px; border-radius:40px; z-index:400; text-align:center;';
-                    document.body.appendChild(overlay);
-                    setTimeout(() => {
-                        overlay.style.opacity = '0';
-                        setTimeout(() => { overlay.remove(); dandelionActive = false; }, 1000);
-                    }, 3000);
-                }
-            }
+            // Caption display
+            showTherapeuticFloatingCaption("Clench and release — your hand just exhaled. Butterflies rise where tension once lived. This is Progressive Muscle Relaxation: tensing, then letting go.", landmarks[9].x, landmarks[9].y);
+          }
+          currentActiveGesture = "Release";
+          panGest.innerText = "🦋 Fist Released!";
+        }
 
-            // 动画循环
-            let loadingHidden = false;
-            function animate() {
-                if (!ctx) return;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                // 花粉
-                for (let p of pollenParticles) {
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = `rgba(255,245,200,${0.3 + Math.sin(Date.now() * 0.002 + p.phase) * 0.2})`;
-                    ctx.fill();
-                    p.y -= p.speedY;
-                    p.x += p.speedX;
-                    if (p.y < 0) p.y = canvas.height;
-                    if (p.x < 0) p.x = canvas.width;
-                    if (p.x > canvas.width) p.x = 0;
-                }
-                // 飘落花瓣
-                for (let i = 0; i < occasionalPetals.length; i++) {
-                    let p = occasionalPetals[i];
-                    ctx.save();
-                    ctx.translate(p.x, p.y);
-                    ctx.rotate(p.angle);
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, p.width / 2, p.height / 2, 0, 0, Math.PI * 2);
-                    ctx.fillStyle = p.color;
-                    ctx.fill();
-                    ctx.restore();
-                    p.y += p.speedY;
-                    p.x += Math.sin(Date.now() * p.swingFreq + p.swingPhase) * 0.5;
-                    p.angle += 0.01;
-                    if (p.y > canvas.height) occasionalPetals.splice(i, 1);
-                }
-                // 主要特效 (蝴蝶、花朵、雨、水滴、蘑菇)
-                for (let i = 0; i < effects.length; i++) {
-                    let e = effects[i];
-                    if (e.life <= 0) continue;
-                    switch (e.type) {
-                        case 'butterfly':
-                            ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle);
-                            const grad = ctx.createRadialGradient(-3, -2, 2, 0, 0, 12);
-                            grad.addColorStop(0, '#f7b42c');
-                            grad.addColorStop(1, `rgba(255,245,210,${0.7 * e.life})`);
-                            ctx.beginPath(); ctx.ellipse(-8, -4, 10, 5, -0.3, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
-                            ctx.beginPath(); ctx.ellipse(8, -4, 10, 5, 0.3, 0, Math.PI * 2); ctx.fill();
-                            ctx.beginPath(); ctx.ellipse(-6, 3, 7, 4, 0.2, 0, Math.PI * 2); ctx.fill();
-                            ctx.beginPath(); ctx.ellipse(6, 3, 7, 4, -0.2, 0, Math.PI * 2); ctx.fill();
-                            ctx.restore(); e.x += e.vx; e.y += e.vy; e.vy += 0.08; e.life -= 0.008;
-                            break;
-                        case 'flower':
-                            let swayOffset = e.sway ? Math.sin(Date.now() * 0.02) * 3 * e.sway : 0;
-                            if (e.sway) e.sway *= 0.95;
-                            for (let a = 0; a < 6; a++) {
-                                let ang = a * Math.PI * 2 / 6;
-                                let offX = Math.cos(ang) * 11 * e.life + swayOffset;
-                                let offY = Math.sin(ang) * 11 * e.life;
-                                ctx.beginPath();
-                                ctx.ellipse(e.x + offX, e.y + offY, 7 * e.life, 4 * e.life, ang, 0, Math.PI * 2);
-                                let baseColor = e.petalColors[a % e.petalColors.length];
-                                ctx.fillStyle = shiftColor(baseColor, colorShift);
-                                ctx.fill();
-                            }
-                            ctx.beginPath(); ctx.arc(e.x, e.y, 3 * e.life, 0, Math.PI * 2); ctx.fillStyle = '#c9a87b'; ctx.fill();
-                            e.life -= 0.007;
-                            break;
-                        case 'rain':
-                            ctx.fillStyle = `rgba(170,200,210,${0.6 * e.life})`;
-                            ctx.fillRect(e.x - 1.5, e.y, 3, 14 * e.life);
-                            e.y += e.vy;
-                            e.life -= 0.012;
-                            if (e.y > canvas.height) { e.life = 0; effects.push({ type: 'splash', x: e.x, y: canvas.height - 5, life: 0.8, radius: 5 }); }
-                            break;
-                        case 'splash':
-                            ctx.beginPath(); ctx.arc(e.x, e.y, e.radius * (1 - e.life), 0, Math.PI * 2);
-                            ctx.fillStyle = `rgba(190,220,230,${0.5 * e.life})`; ctx.fill();
-                            e.life -= 0.03; e.radius += 1.5;
-                            break;
-                        case 'droplet':
-                            ctx.beginPath(); ctx.moveTo(e.x, e.y);
-                            ctx.quadraticCurveTo(e.x - 3, e.y + 6, e.x, e.y + 12);
-                            ctx.quadraticCurveTo(e.x + 3, e.y + 6, e.x, e.y);
-                            ctx.fillStyle = `rgba(150,200,210,${0.7 * e.life})`; ctx.fill();
-                            e.y += e.vy; e.vy += 0.3; e.life -= 0.012;
-                            break;
-                        case 'mushroom':
-                            let growth = Math.min(1, e.life + 0.3);
-                            ctx.fillStyle = '#c49a6c';
-                            ctx.beginPath(); ctx.ellipse(e.x, e.y - 4 * growth, 9 * growth, 8 * growth, 0, 0, Math.PI * 2); ctx.fill();
-                            ctx.fillStyle = '#e8dcc8';
-                            ctx.fillRect(e.x - 3 * growth, e.y - 2 * growth, 6 * growth, 14 * growth);
-                            if (e.birth && (Date.now() - e.birth) > 8000 && !e.snailDrawn) {
-                                e.snailDrawn = true;
-                                ctx.save(); ctx.translate(e.x, e.y - 10);
-                                ctx.fillStyle = '#9c7c5e'; ctx.beginPath(); ctx.ellipse(0, 0, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
-                                ctx.fillStyle = '#d4b48c'; ctx.beginPath(); ctx.arc(2, -2, 1.5, 0, Math.PI * 2); ctx.fill();
-                                ctx.fillStyle = '#4a3728'; ctx.beginPath(); ctx.moveTo(3, -2.5); ctx.lineTo(5, -3); ctx.lineTo(4, -1.5); ctx.fill();
-                                ctx.beginPath(); ctx.moveTo(2.5, -2); ctx.lineTo(4, -2.2); ctx.lineTo(3, -1); ctx.fill();
-                                ctx.restore();
-                            }
-                            e.life -= 0.005;
-                            break;
-                    }
-                }
-                effects = effects.filter(e => e.life > 0);
-                // 雨量、水坑、阳光
-                let rainCount = effects.filter(e => e.type === 'rain').length;
-                updateRainVolume(rainCount);
-                if (rainCount > 0) rainActiveTime += 0.033; else rainActiveTime = Math.max(0, rainActiveTime - 0.05);
-                if (rainActiveTime > 5) puddleOpacity = Math.min(0.25, puddleOpacity + 0.008); else puddleOpacity = Math.max(0, puddleOpacity - 0.005);
-                if (rainCount === 0 && lastRainFrame === true && rainActiveTime > 10 && !sunlightEffectActive) {
-                    sunlightEffectActive = true; sunlightUntil = Date.now() + 3000;
-                    effects.push({ type: 'butterfly', x: canvas.width / 2 + (Math.random() - 0.5) * 200, y: canvas.height / 2, vx: (Math.random() - 0.5) * 1.5, vy: -Math.random() - 0.5, life: 1, angle: Math.random() * Math.PI * 2 });
-                }
-                lastRainFrame = rainCount > 0;
-                if (puddleOpacity > 0) {
-                    ctx.fillStyle = `rgba(180,200,210,${puddleOpacity * 0.4})`;
-                    ctx.beginPath(); ctx.ellipse(canvas.width / 2, canvas.height - 20, 150, 30, 0, 0, Math.PI * 2); ctx.fill();
-                }
-                if (sunlightEffectActive && Date.now() < sunlightUntil) {
-                    ctx.fillStyle = `rgba(255, 240, 200, 0.05)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                } else { sunlightEffectActive = false; }
-                // 呼吸环 + 持久光圈
-                if (stillBreathingActive) {
-                    const t = (Date.now() % 8000) / 8000;
-                    const scale = t < 0.5 ? 0.8 + t * 0.8 : 1.6 - (t - 0.5) * 1.6;
-                    ctx.beginPath(); ctx.arc(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35 * scale, 0, Math.PI * 2);
-                    ctx.strokeStyle = `rgba(220,200,170,0.12)`; ctx.lineWidth = 6; ctx.stroke();
-                }
-                if (persistenceRingActive && ringProgress < 1) {
-                    ringProgress += 0.012;
-                    ctx.beginPath(); ctx.arc(ringCenter.x * canvas.width, ringCenter.y * canvas.height, 40 + ringProgress * 20, 0, Math.PI * 2);
-                    ctx.strokeStyle = `rgba(210, 180, 140, ${0.2 * (1 - ringProgress)})`;
-                    ctx.lineWidth = 2; ctx.stroke();
-                    if (ringProgress >= 1) persistenceRingActive = false;
-                }
-                // 暗角 + 蒲公英
-                const vignette = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.4, canvas.width / 2, canvas.height / 2, canvas.width * 0.9);
-                vignette.addColorStop(0, 'rgba(0,0,0,0)');
-                vignette.addColorStop(1, nightMode ? 'rgba(60,40,30,0.2)' : 'rgba(80,60,40,0.12)');
-                ctx.fillStyle = vignette; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                drawDandelion(); checkDandelionTrigger();
-                handAbsentTimer += 0.016;
-                // 浮动字幕
-                for (let i = 0; i < captions.length; i++) {
-                    ctx.font = "italic 14px 'Segoe UI'";
-                    ctx.fillStyle = `rgba(255,245,220,${captions[i].life * 0.9})`;
-                    ctx.fillText(captions[i].text, captions[i].x, captions[i].y - (1 - captions[i].life) * 15);
-                    captions[i].life -= 0.005;
-                }
-                captions = captions.filter(c => c.life > 0);
-                // FPS
-                frameCount++;
-                const nowPerf = performance.now();
-                if (nowPerf - lastFrameTime >= 1000) {
-                    let currentFPS = frameCount;
-                    document.getElementById('fps').innerText = currentFPS;
-                    updatePerformanceMode(currentFPS);
-                    frameCount = 0;
-                    lastFrameTime = nowPerf;
-                }
-                if (!loadingHidden && handDetectedFlag) {
-                    document.getElementById('loadingIndicator').style.display = 'none';
-                    loadingHidden = true;
-                }
-                requestAnimationFrame(animate);
-            }
+        // 2. OPEN STROKE ENGINE (Moves fingers flat)
+        else if (insideOpen) {
+          currentActiveGesture = "Open Palm";
+          panGest.innerText = "🖐️ Open Palm";
 
-            // MediaPipe 设置 (关键修复：统一版本路径)
-            let handsInstance = null, faceMeshInstance = null;
-            async function initMediaPipe() {
-                try {
-                    // 固定模型路径，确保国内可加载
-                    handsInstance = new Hands({ locateFile: f => `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${f}` });
-                    handsInstance.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.65 });
-                    handsInstance.onResults((results) => {
-                        handDetectedFlag = results.multiHandLandmarks?.length > 0;
-                        document.getElementById('handDetected').innerText = handDetectedFlag ? "YES" : "NO";
-                        if (handDetectedFlag) {
-                            handLandmarks = results.multiHandLandmarks[0];
-                            currentGesture = detectGesture(handLandmarks);
-                            document.getElementById('gestureName').innerText = currentGesture;
-                            const palm = handLandmarks[9];
-                            let x = palm.x * canvas.width, y = palm.y * canvas.height;
-                            const now = Date.now();
-                            if (now - lastTriggerTime > COOLDOWN_MS) {
-                                if (currentGesture === "FIST") addButterflyBurst(x, y);
-                                else if (currentGesture === "PINCH") addTeardrop(x, y);
-                                else if (currentGesture === "TAP") addRain(x, y);
-                                else if (currentGesture === "STILL
+          // Calculate displacement speed
+          if (palmHistory.length >= 2) {
+            const lastIdx = palmHistory.length - 1;
+            const velocity = distL(palmHistory[lastIdx], palmHistory[lastIdx - 1]);
+            
+            // Speed threshold for drawing path
+            if (velocity > 0.007 && Date.now() - lastGestureTimes.openStroke > 50) {
+              // Spawn pastel flower trails at fingertips
+              flowers.push(new GardenFlower(landmarks[8].x, landmarks[8].y)); // index tip
+              if (Math.random() > 0.5) flowers.push(new GardenFlower(landmarks[12].x, landmarks[12].y)); // middle tip
+
+              lastGestureTimes.openStroke = Date.now();
+
+              // 20% random overlay comment
+              if (Math.random() < 0.20) {
+                showTherapeuticFloatingCaption("Your fingers can trace wounds, or grow a trail of blossoms. Each stroke chooses growth. This is Habit Reversal Training — the same hand, a different ending.", landmarks[9].x, landmarks[9].y);
+              }
+            }
+          }
+
+          // 3. PERSISTENCE RECOVERY RING
+          // If palm remains open for 3+ seconds after fist-released burst, draw a visual circle slowly
+          if (lastFistReleaseTime > 0 && Date.now() - lastFistReleaseTime > 3000) {
+            const timeElapsed = Date.now() - lastFistReleaseTime - 3000;
+            if (timeElapsed < 1500) {
+              const progress = Math.min(1.0, timeElapsed / 1500);
+              
+              // Draw a faint circle on canvas matching palm coordinates
+              ctx.save();
+              ctx.strokeStyle = `rgba(245, 240, 224, 0.2)`;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              // Mirror coordinates correct drawing radius
+              const cxPercent = (1 - landmarks[9].x) * canvasWidth;
+              const cyPercent = landmarks[9].y * canvasHeight;
+              
+              ctx.arc(cxPercent, cyPercent, 45, 0, Math.PI * 2 * progress);
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+        }
+
+        // 4. INDEX FINGER INITIATED TAP
+        else if (insideIndexExtended) {
+          currentActiveGesture = "Index Point";
+          panGest.innerText = "👆 Index Extended";
+
+          const curTime = Date.now();
+          const curY = landmarks[8].y; // tip of index
+          const velocityY = curY - prevIndexY; // positive reflects downwards in screen coordinates
+
+          // Check speed acceleration for tap trigger downward stroke
+          if (velocityY > 0.015 && (curTime - lastGestureTimes.indexTap > 600)) {
+            // Tap triggered!
+            for (let r = 0; r < 3; r++) {
+              raindrops.push(new SoothingRaindrop(landmarks[8].x, landmarks[8].y));
+            }
+            lastGestureTimes.indexTap = curTime;
+
+            // 25% random comment
+            if (Math.random() < 0.25) {
+              showTherapeuticFloatingCaption("When the urge to tap feels urgent, let it fall as rain. Even storms water something new. Releasing restless energy through rhythm soothes the nervous system.", landmarks[8].x, landmarks[8].y);
+            }
+          }
+
+          prevIndexY = curY;
+          prevIndexTime = curTime;
+        }
+
+        // 5. DEEP RUMINATION INTERRUPT: PINCH
+        else if (insidePinch) {
+          currentActiveGesture = "Pinch";
+          panGest.innerText = "🤏 Pinch";
+
+          const nowT = Date.now();
+          if (nowT - lastGestureTimes.pinch > 800) {
+            // Droplet center (midpoint thumbs & indexes)
+            const midX = (landmarks[4].x + landmarks[8].x) / 2;
+            const midY = (landmarks[4].y + landmarks[8].y) / 2;
+
+            droplets.push(new PinchedDroplet(midX, midY));
+            lastGestureTimes.pinch = nowT;
+
+            showTherapeuticFloatingCaption("Pinch the air, and a drop falls. Attention is the water; the garden is your mind. Fine motor control engages the prefrontal cortex, interrupting anxious rumination.", midX, midY);
+          }
+        }
+
+        // 6. MINDFUL STILLNESS (MUSHROOM GROWING & BREEDING GUIDE)
+        if (isStationary && isHandDetected && (insideOpen || checkLyingFlat(landmarks))) {
+          if (!stillTimerStart) {
+            stillTimerStart = Date.now();
+          }
+
+          const elapsedStill = Date.now() - stillTimerStart;
+          currentActiveGesture = "Stillness";
+          panGest.innerText = "✋ Stillness (" + (elapsedStill / 1000).toFixed(1) + "s)";
+
+          // Subtle breathing edge ring glow
+          const breathPhase = (Date.now() / 8000) * Math.PI * 2; // 8-second total breathing period
+          const ringPulse = 0.96 + Math.sin(breathPhase) * 0.04; // pulsing scale
+          breathingRing.style.transform = `scale(${ringPulse})`;
+          // Shifts soft sage and brown coloring faintly
+          breathingRing.style.borderColor = `rgba(155, 174, 138, ${0.12 + Math.sin(breathPhase) * 0.05})`;
+
+          // Trigger mushrooms after 1.5 seconds stillness
+          if (elapsedStill >= 1500) {
+            if (!mainMushroomGrowing) {
+              // Spawn fresh mushroom under palm center (landmark 9)
+              mainMushroomGrowing = new CuteMushroom(landmarks[9].x, landmarks[9].y);
+              mushrooms.push(mainMushroomGrowing);
+              
+              showTherapeuticFloatingCaption("Stillness is a kind of growing. Mushrooms emerge when you stop trying. This is mindfulness — allowing the moment to be what it is, without fixing it.", landmarks[9].x, landmarks[9].y);
+            }
+          }
+        } else {
+          // If moved, cancel active timers
+          stillTimerStart = null;
+          if (mainMushroomGrowing) {
+            mainMushroomGrowing.isDecaying = true; // fades the mushroom
+            mainMushroomGrowing = null;
+          }
+          // Quietly ease ring scale back
+          breathingRing.style.transform = "scale(1)";
+          breathingRing.style.borderColor = "rgba(155, 174, 138, 0.08)";
+        }
+      }
+
+      function checkLyingFlat(landmarks) {
+        // Fallback checks general palm presence flattened slightly
+        return distL(landmarks[8], landmarks[0]) > 1.0;
+      }
+
+      /* FACE GESTURE INTERACTORS & EYE DETECTORS */
+      let mouthWideOpen = false;
+      let mouthWideOpenTime = 0;
+
+      function handleFaceMeshResults(results) {
+        const panFace = document.getElementById('db-face');
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+          isFaceDetected = false;
+          if (panFace) {
+            panFace.innerText = "NO";
+            panFace.className = "text-red-400 font-semibold";
+          }
+          eyesClosedTimer = 0;
+          return;
+        }
+        isFaceDetected = true;
+        if (panFace) {
+          panFace.innerText = "YES";
+          panFace.className = "text-green-400 font-semibold";
+        }
+
+        const landmarks = results.multiFaceLandmarks[0];
+
+        // Lip corners
+        const p61 = landmarks[61];
+        const p291 = landmarks[291];
+        const p13 = landmarks[13];
+        const p14 = landmarks[14];
+
+        if (!p61 || !p291 || !p13 || !p14) return;
+
+        const mWidth = distL(p61, p291);
+        const mHeight = distL(p13, p14);
+
+        if (restingMouthWidth === 0) {
+          restingMouthWidth = mWidth;
+          restingMouthHeight = mHeight;
+        } else {
+          restingMouthWidth = restingMouthWidth * 0.995 + mWidth * 0.005;
+          restingMouthHeight = restingMouthHeight * 0.995 + mHeight * 0.005;
+        }
+
+        // SMILE DETECTION (width > resting * 1.15)
+        if (mWidth > restingMouthWidth * 1.15 && (Date.now() - smileCooldown > 4000)) {
+          smileCooldown = Date.now();
+          const midX = (p61.x + p291.x) / 2;
+          const midY = (p61.y + p291.y) / 2;
+          
+          const smileFl = new GardenFlower(midX, midY);
+          smileFl.scale = 1.35;
+          flowers.push(smileFl);
+          totalGestures++;
+          playFlowerBloomChime();
+          showTherapeuticFloatingCaption("A smile detected. Small flowers bloom from your expression. Joy is contagious.", midX, midY);
+        }
+
+        // EYES CLOSED DETECTION
+        const earnNumeratorLeft = distL(landmarks[159], landmarks[145]) + distL(landmarks[158], landmarks[153]);
+        const earnDenominatorLeft = 2 * distL(landmarks[33], landmarks[133]);
+        const earLeft = earnNumeratorLeft / earnDenominatorLeft;
+
+        const earnNumeratorRight = distL(landmarks[386], landmarks[374]) + distL(landmarks[385], landmarks[380]);
+        const earnDenominatorRight = 2 * distL(landmarks[263], landmarks[362]);
+        const earRight = earnNumeratorRight / earnDenominatorRight;
+
+        const avgEAR = (earLeft + earRight) / 2;
+
+        if (avgEAR < 0.20) {
+          if (eyesClosedTimer === 0) {
+            eyesClosedTimer = Date.now();
+          } else if (Date.now() - eyesClosedTimer > 2000 && !eyesClosedActive) {
+            eyesClosedActive = true;
+            triggerWarmGlow();
+          }
+        } else {
+          eyesClosedTimer = 0;
+          eyesClosedActive = false;
+        }
+
+        // HEAD NOD DETECTION
+        trackHeadPitch(landmarks[1], landmarks[168]);
+
+        // DANDELION BLOW DETECTOR
+        trackDandelionBlow(mHeight);
+      }
+
+      function trackHeadPitch(nose, faceCenter) {
+        if (!nose || !faceCenter) return;
+        const relativeY = nose.y - faceCenter.y;
+        pitchHistory.push({ y: relativeY, t: Date.now() });
+        
+        if (pitchHistory.length > 30) {
+          pitchHistory.shift();
+        }
+
+        if (pitchHistory.length >= 20) {
+          const oldest = pitchHistory[0];
+          const newest = pitchHistory[pitchHistory.length - 1];
+          const dy = newest.y - oldest.y;
+          const dt = newest.t - oldest.t;
+          
+          if (dt <= 500 && Math.abs(dy) > 0.025) {
+            if (Date.now() - lastNodTime > 1500) {
+              lastNodTime = Date.now();
+              triggerGentleBreeze();
+            }
+          }
+        }
+      }
+
+      function trackDandelionBlow(mHeight) {
+        if (!dandelionActive || restingMouthHeight === 0) return;
+        
+        if (mHeight > restingMouthHeight * 1.95) {
+          if (!mouthWideOpen) {
+            mouthWideOpen = true;
+            mouthWideOpenTime = Date.now();
+          }
+        } else if (mHeight < restingMouthHeight * 1.3 && mouthWideOpen) {
+          const elapsed = Date.now() - mouthWideOpenTime;
+          if (elapsed <= 1000) {
+            triggerDandelionBlow();
+          }
+          mouthWideOpen = false;
+        }
+      }
+
+      function triggerDandelionBlow() {
+        dandelionActive = false;
+        blowingActive = true;
+        blowingSeeds = [];
+        
+        const count = 10 + Math.floor(Math.random() * 3);
+        
+        for (let s = 0; s < count; s++) {
+          blowingSeeds.push({
+            x: dandelionX,
+            y: dandelionY,
+            vx: (Math.random() - 0.5) * 2.8,
+            vy: -0.6 - Math.random() * 1.8,
+            life: 1.0,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+        
+        playFlowerBloomChime();
+        playSoftButterflyBurst();
+        
+        setTimeout(() => {
+          farewellOverlayActive = true;
+          farewellPhraseChosen = dandelionFarewellPhrases[Math.floor(Math.random() * dandelionFarewellPhrases.length)];
+          farewellOverlayStart = Date.now();
+          
+          setTimeout(() => {
+            farewellOverlayActive = false;
+            blowingActive = false;
+            totalGestures = 0;
+            dandelionTriggered = false;
+          }, 4000);
+        }, 6000);
+      }
+
+
+      /* TUTORIAL & INSTRUCTION SEQUENCING */
+      
+      function checkAndRunTutorial() {
+        try {
+          const shown = localStorage.getItem('tutorialShown');
+          if (shown === 'true') {
+            return; // skip if already shown
+          }
+          startTutorialSequence();
+        } catch (e) {
+          console.warn("Storage warning, booting tutorial defaults:", e);
+          startTutorialSequence();
+        }
+      }
+
+      function startTutorialSequence() {
+        tutorialActive = true;
+        tutorialStep = 0;
+        tutorialTimer = Date.now();
+        document.getElementById('tutorial-overlay').classList.remove('hidden');
+        document.getElementById('tutorial-overlay').style.opacity = '1';
+      }
+
+      function skipTutorial() {
+        tutorialActive = false;
+        document.getElementById('tutorial-overlay').style.opacity = '0';
+        setTimeout(() => {
+          document.getElementById('tutorial-overlay').classList.add('hidden');
+        }, 1000);
+        
+        try {
+          localStorage.setItem('tutorialShown', 'true');
+        } catch(e) {}
+      }
+
+      // Draw custom ghostly hand outline coordinates sequentially
+      function updateAndDrawTutorialModel() {
+        if (!tutorialActive) return;
+
+        const timeInStep = Date.now() - tutorialTimer;
+        if (timeInStep > 3200) {
+          tutorialStep++;
+          tutorialTimer = Date.now();
+          if (tutorialStep >= tutorialStepsCount) {
+            // End full tutorial cycle
+            skipTutorial();
+            return;
+          }
+        }
+
+        const helperBox = document.getElementById('tutorial-helper');
+        
+        // Define hardcoded landmark offsets simulating step gestures
+        let mockLandmarks = [];
+        
+        // Populate standard base structure (wrist: 0.5, 0.8)
+        for (let idx = 0; idx < 21; idx++) {
+          mockLandmarks.push({ x: 0.5, y: 0.7 });
+        }
+
+        switch (tutorialStep) {
+          case 0: // Fist -> Release
+            helperBox.innerText = "1. FIST & RELEASE: Clench your hand strongly, then open it completely to release butterflies.";
+            
+            // Simulates fist first, then transition to release
+            const isClenched = (timeInStep % 1600) < 800;
+            if (isClenched) {
+              setMockFinger(mockLandmarks, 8, 0.5, 0.65);  // index curled
+              setMockFinger(mockLandmarks, 12, 0.49, 0.65); // middle curled
+              setMockFinger(mockLandmarks, 16, 0.51, 0.65); // ring curled
+              setMockFinger(mockLandmarks, 20, 0.52, 0.66); // pinky curled
+            } else {
+              setMockFinger(mockLandmarks, 8, 0.45, 0.46);  // index spread
+              setMockFinger(mockLandmarks, 12, 0.48, 0.43); // middle spread
+              setMockFinger(mockLandmarks, 16, 0.52, 0.44); // ring spread
+              setMockFinger(mockLandmarks, 20, 0.55, 0.47); // pinky spread
+              
+              // Spawn simulated tutorial butterflies on screen
+              if (Math.random() < 0.12) {
+                butterflies.push(new SketchButterfly(0.5, 0.5));
+              }
+            }
+            break;
+
+          case 1: // Open palm stroke
+            helperBox.innerText = "2. OPEN PALM SWEEP: Open your palm flat, and glide horizontal paths across the soil to paint flowers.";
+            
+            // Sweep side-to-side coordinate sliding
+            const swingX = 0.5 + Math.sin(Date.now() * 0.0035) * 0.15;
+            mockLandmarks[0] = { x: swingX, y: 0.72 };
+            mockLandmarks[9] = { x: swingX, y: 0.60 };
+            setMockFinger(mockLandmarks, 8, swingX - 0.06, 0.46);
+            setMockFinger(mockLandmarks, 12, swingX - 0.02, 0.43);
+            setMockFinger(mockLandmarks, 16, swingX + 0.02, 0.44);
+            setMockFinger(mockLandmarks, 20, swingX + 0.06, 0.47);
+
+            if (Math.random() < 0.1) {
+              flowers.push(new GardenFlower(swingX, 0.5));
+            }
+            break;
+
+          case 2: // Index tap
+            helperBox.innerText = "3. INDEX TAP: Close other fingers and move your index down quickly to sprinkle soothing raindrops.";
+            
+            // Draw Index upright, others curled
+            const tapOffset = 0.5 + Math.abs(Math.sin(Date.now() * 0.005)) * 0.12;
+            mockLandmarks[0] = { x: 0.5, y: 0.72 };
+            mockLandmarks[9] = { x: 0.5, y: 0.60 };
+            setMockFinger(mockLandmarks, 8, 0.46, tapOffset); // tap movement
+            setMockFinger(mockLandmarks, 12, 0.49, 0.65);
+            setMockFinger(mockLandmarks, 16, 0.51, 0.65);
+            setMockFinger(mockLandmarks, 20, 0.52, 0.66);
+
+            if (tapOffset > 0.6 && Math.random() < 0.15) {
+              raindrops.push(new SoothingRaindrop(0.46, 0.6));
+            }
+            break;
+
+          case 3: // Pinch
+            helperBox.innerText = "4. PINCH: Bring your thumb and index tips together to generate hanging droplets of concentration.";
+            
+            // Simulated pinching tips
+            const pulse = (timeInStep % 1000) > 500;
+            mockLandmarks[0] = { x: 0.5, y: 0.72 };
+            mockLandmarks[9] = { x: 0.5, y: 0.60 };
+            
+            if (pulse) {
+              // Touching index(8) and thumb(4)
+              setMockFinger(mockLandmarks, 8, 0.48, 0.55);
+              setMockFinger(mockLandmarks, 4, 0.48, 0.55);
+            } else {
+              setMockFinger(mockLandmarks, 8, 0.46, 0.51);
+              setMockFinger(mockLandmarks, 4, 0.50, 0.55);
+            }
+            // Others open
+            setMockFinger(mockLandmarks, 12, 0.42, 0.44);
+            setMockFinger(mockLandmarks, 16, 0.46, 0.43);
+            setMockFinger(mockLandmarks, 20, 0.50, 0.45);
+
+            if (pulse && Math.random() < 0.04) {
+              droplets.push(new PinchedDroplet(0.48, 0.56));
+            }
+            break;
+
+          case 4: // Keep still
+            helperBox.innerText = "5. HOLD STILL: Rest your flat hand in one place for 1.5s to sprout cozy forest mushrooms.";
+            
+            mockLandmarks[0] = { x: 0.5, y: 0.72 };
+            mockLandmarks[9] = { x: 0.5, y: 0.60 };
+            setMockFinger(mockLandmarks, 8, 0.44, 0.46);
+            setMockFinger(mockLandmarks, 12, 0.48, 0.43);
+            setMockFinger(mockLandmarks, 16, 0.52, 0.44);
+            setMockFinger(mockLandmarks, 20, 0.56, 0.47);
+
+            // Grow a dummy mushroom slowly right underneath
+            if (mushrooms.length === 0) {
+              const testMush = new CuteMushroom(0.5, 0.75);
+              mushrooms.push(testMush);
+            }
+            break;
+        }
+
+        // Render the skeleton to canvas directly
+        ctx.save();
+        ctx.strokeStyle = "rgba(40, 40, 40, 0.15)";
+        ctx.fillStyle = "rgba(40, 40, 40, 0.05)";
+        ctx.lineWidth = 3.5;
+        
+        // Simple mock skeleton joints builder
+        const bones = [
+          [0, 1], [1, 2], [2, 3], [3, 4],
+          [0, 5], [5, 6], [6, 7], [7, 8],
+          [0, 9], [9, 10], [10, 11], [11, 12],
+          [0, 13], [13, 14], [14, 15], [15, 16],
+          [0, 17], [17, 18], [18, 19], [19, 20]
+        ];
+
+        for (const [b1, b2] of bones) {
+          const m1 = mockLandmarks[b1];
+          const m2 = mockLandmarks[b2];
+          ctx.beginPath();
+          ctx.moveTo(m1.x * canvasWidth, m1.y * canvasHeight);
+          ctx.lineTo(m2.x * canvasWidth, m2.y * canvasHeight);
+          ctx.stroke();
+        }
+
+        for (const pt of mockLandmarks) {
+          ctx.beginPath();
+          ctx.arc(pt.x * canvasWidth, pt.y * canvasHeight, 5, 0, Math.PI*2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      function setMockFinger(arr, tipIdx, tx, ty) {
+        arr[tipIdx] = { x: tx, y: ty };
+        // Place joints dynamically matching path
+        arr[tipIdx - 1] = { x: (tx + 0.5) / 2, y: (ty + 0.6) / 2 };
+        arr[tipIdx - 2] = { x: (tx + 1.0) / 3 + 0.15, y: (ty + 1.2) / 3 };
+      }
+
+
+      /* ENGINE INTEGRATED LOOP TICK */
+
+      function loopAnimationFrame() {
+        // Clear screen with custom background overlay
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+        // Compute runtime debugging statistics
+        frameCount++;
+        const curSec = performance.now();
+        if (curSec - lastSec >= 1000) {
+          displayFPS = frameCount;
+          document.getElementById('db-fps').innerText = displayFPS;
+          frameCount = 0;
+          lastSec = curSec;
+
+          // Update audio state panel metric
+          const dbAud = document.getElementById('db-audio');
+          if (dbAud && audioCtx) {
+            dbAud.innerText = audioCtx.state.toUpperCase();
+            if (audioCtx.state === "running") {
+              dbAud.className = "text-green-400 font-semibold font-mono";
+            }
+          }
+        }
+
+        // 1. UPDATE ATMOSPHERICS AND ENVIRONMENT METRICS
+        updateColorShift();
+        updateWarmGlow();
+        updateBreezeSway();
+
+        // Increment continuous quiet white noise volume matching raindrop count
+        if (rainGainNode && audioCtx && audioCtx.state !== "suspended") {
+          const rainVol = Math.min(0.08, raindrops.length * 0.008);
+          rainGainNode.gain.setTargetAtTime(rainVol, audioCtx.currentTime, 0.1);
+        }
+
+        // Wet layer logic (10 seconds decay)
+        const timeSinceRain = (Date.now() - lastRainTime) / 1000;
+        if (timeSinceRain < 10 && lastRainTime > 0 && raindrops.length === 0) {
+          const wetVol = 0.015 * (1 - timeSinceRain / 10);
+          if (wetLayerGainNode) {
+            wetLayerGainNode.gain.setTargetAtTime(wetVol, audioCtx.currentTime, 0.1);
+          }
+          if (Math.random() < 0.006) {
+            playSoftDropletWetSound();
+          }
+        } else {
+          if (wetLayerGainNode) {
+            wetLayerGainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+          }
+        }
+
+        if (isHandDetected) {
+          handAbsentStartTime = Date.now();
+        }
+        const handAbsentTime = (Date.now() - handAbsentStartTime) / 1000;
+
+        // Sunlight after rain
+        if (raindrops.length > 0) {
+          rainConcecSeconds += 1 / 60;
+          if (rainConcecSeconds > 10) {
+            rainHadBeenLong = true;
+          }
+          lastRainTime = Date.now();
+        } else {
+          if (rainHadBeenLong) {
+            sunlightActive = true;
+            sunlightTimer = Date.now();
+            rainHadBeenLong = false;
+            
+            // Spawn horizontally drifting butterfly
+            const sunBF = new SketchButterfly(0.1, 0.5);
+            sunBF.vx = 1.6;
+            sunBF.vy = -0.12;
+            butterflies.push(sunBF);
+            showTherapeuticFloatingCaption("After the storm, sunlight returns. A golden butterfly drifts through the warmth.", 0.2, 0.45);
+          }
+          rainConcecSeconds = 0;
+        }
+
+        // Puddle logic
+        if (raindrops.length > 0) {
+          rainActiveTime += 1 / 60;
+        } else {
+          rainActiveTime = 0;
+        }
+        if (rainActiveTime > 5) {
+          puddleOpacity = Math.min(0.15, puddleOpacity + 0.005);
+        } else {
+          puddleOpacity = Math.max(0, puddleOpacity - 0.015 / 60);
+        }
+
+        // Stable gesture petal near mushroom tracking
+        if (mainMushroomGrowing) {
+          const lastIdx = palmHistory.length - 1;
+          if (lastIdx > 0 && palmHistory[lastIdx] && palmHistory[lastIdx - 1]) {
+            const lastVel = distL(palmHistory[lastIdx], palmHistory[lastIdx - 1]) * canvasWidth;
+            if (lastVel < 0.50) {
+              if (mushroomStableStart === 0) {
+                mushroomStableStart = Date.now();
+              } else if (Date.now() - mushroomStableStart > 1000 && !stablePetalActive) {
+                stablePetal = new FallingPetal();
+                stablePetal.x = mainMushroomGrowing.x + (Math.random() - 0.5) * 40;
+                stablePetal.y = mainMushroomGrowing.y - 120;
+                stablePetal.speedY = 0.5;
+                stablePetal.w = 7;
+                stablePetal.h = 4.5;
+                stablePetal.targetY = mainMushroomGrowing.y + 15 + (Math.random() - 0.5) * 8;
+                stablePetal.restingTimer = 0;
+                stablePetalActive = true;
+              }
+            } else {
+              mushroomStableStart = 0;
+            }
+          }
+        } else {
+          mushroomStableStart = 0;
+        }
+
+        // Dandelion trigger
+        if (totalGestures >= 10 && handAbsentTime >= 10 && !dandelionTriggered) {
+          dandelionTriggered = true;
+          dandelionActive = true;
+          dandelionX = canvasWidth / 2;
+          dandelionY = canvasHeight / 2 - 30;
+          showTherapeuticFloatingCaption("The garden is calm. A dandelion appears. Blow gently on your screen to disperse its seeds.", 0.5, 0.4);
+        }
+
+        // Draw active tutorial silhouettes if open
+        if (tutorialActive) {
+          updateAndDrawTutorialModel();
+        }
+
+        // Render pollens
+        if (pollens.length === 0) {
+          initPollens();
+        }
+        for (const p of pollens) {
+          p.update();
+          p.draw();
+        }
+
+        // Render petals
+        for (let petIdx = petals.length - 1; petIdx >= 0; petIdx--) {
+          const pt = petals[petIdx];
+          pt.update();
+          pt.draw();
+          if (pt.y > canvasHeight) {
+            petals.splice(petIdx, 1);
+          }
+        }
+
+        // Render puddle
+        drawPuddle();
+
+        // Render Dandelion and seeds
+        drawDandelion();
+        updateAndDrawBlowingSeeds();
+
+        // Stable petal drawing
+        if (stablePetalActive && stablePetal) {
+          if (stablePetal.y < stablePetal.targetY) {
+            stablePetal.y += stablePetal.speedY;
+            stablePetal.x += Math.sin(Date.now() * 0.005) * 0.3;
+            stablePetal.angle += 0.01;
+          } else {
+            if (stablePetal.restingTimer === 0) {
+              stablePetal.restingTimer = Date.now();
+            }
+            const restfulTime = Date.now() - stablePetal.restingTimer;
+            if (restfulTime >= 5000) {
+              stablePetalActive = false;
+              stablePetal = null;
+            } else {
+              const fadeProgress = Math.max(0, 1.0 - Math.max(0, restfulTime - 4000) / 1000);
+              drawSketchyEllipse(stablePetal.x, stablePetal.y, stablePetal.w, stablePetal.h, stablePetal.angle, 0, Math.PI * 2, `rgba(255, 220, 210, ${0.6 * fadeProgress})`, `rgba(50, 40, 40, ${0.25 * fadeProgress})`);
+            }
+          }
+          if (stablePetal && stablePetal.y < stablePetal.targetY) {
+            stablePetal.draw();
+          }
+        }
+
+        /* 1. MUSHROOMS */
+        for (let mushIdx = mushrooms.length - 1; mushIdx >= 0; mushIdx--) {
+          const m = mushrooms[mushIdx];
+          m.update();
+          m.draw();
+          if (m.life <= 0) {
+            mushrooms.splice(mushIdx, 1);
+          }
+        }
+
+        /* 2. FLOWERS */
+        for (let flowIdx = flowers.length - 1; flowIdx >= 0; flowIdx--) {
+          const f = flowers[flowIdx];
+          f.update();
+          f.draw();
+          if (f.life <= 0) {
+            flowers.splice(flowIdx, 1);
+          }
+        }
+
+        /* 3. PINCHED WATER DROPLETS */
+        for (let dropIdx = droplets.length - 1; dropIdx >= 0; dropIdx--) {
+          const d = droplets[dropIdx];
+          d.update();
+          d.draw();
+          if (d.life <= 0) {
+            droplets.splice(dropIdx, 1);
+          }
+        }
+
+        /* 4. RAINDROPS */
+        for (let rainIdx = raindrops.length - 1; rainIdx >= 0; rainIdx--) {
+          const r = raindrops[rainIdx];
+          r.update();
+          r.draw();
+          if (r.life <= 0) {
+            raindrops.splice(rainIdx, 1);
+          }
+        }
+
+        /* 5. SPLASH RIPPLES */
+        for (let splIdx = splashes.length - 1; splIdx >= 0; splIdx--) {
+          const s = splashes[splIdx];
+          s.update();
+          s.draw();
+          if (s.life <= 0) {
+            splashes.splice(splIdx, 1);
+          }
+        }
+
+        /* 6. BUTTERFLIES */
+        for (let buttIdx = butterflies.length - 1; buttIdx >= 0; buttIdx--) {
+          const b = butterflies[buttIdx];
+          b.update();
+          b.draw();
+          if (b.life <= 0) {
+            butterflies.splice(buttIdx, 1);
+          }
+        }
+
+        // Draw Ambient Sunlight Overlay (Easter egg)
+        drawSunlightOverlay();
+
+        // Draw Soft Vignette for dreamy atmosphere
+        drawSoftVignette();
+
+        // Farewell overlay render
+        drawFarewellOverlay();
+
+        // Loop
+        requestAnimationFrame(loopAnimationFrame);
+      }
+
+      /* START PROCEDURE */
+      setTimeout(() => {
+        adaptCanvasSize();
+        startMediaPipeEngine();
+        requestAnimationFrame(loopAnimationFrame);
+      }, 500);
+
+    </script>
+  </body>
+</html>
