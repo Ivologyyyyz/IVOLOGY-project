@@ -1,0 +1,1067 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>魔法花园 · 手势疗愈</title>
+    <!-- MediaPipe 全局脚本 (Safari 兼容) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background-color: #f5f0e0;
+            overflow-x: hidden;
+            font-family: 'Segoe UI', 'Quicksand', system-ui, -apple-system, 'San Francisco', sans-serif;
+        }
+        #webcam {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1);
+            opacity: 0.55;
+            z-index: 1;
+            pointer-events: none;
+        }
+        #outputCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 2;
+            pointer-events: none;
+        }
+        #debugPanel {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(20, 18, 16, 0.8);
+            backdrop-filter: blur(8px);
+            color: #e0d7c6;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 11px;
+            z-index: 100;
+            border-left: 3px solid #c9b88c;
+            pointer-events: none;
+        }
+        #hintPanel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(30, 28, 24, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 12px 20px;
+            font-size: 0.75rem;
+            color: #e0d7c6;
+            z-index: 100;
+            text-align: right;
+            line-height: 1.5;
+            border: 1px solid rgba(201, 184, 140, 0.3);
+            pointer-events: none;
+        }
+        #introText {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.6rem;
+            text-align: center;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 200;
+            opacity: 1;
+            transition: opacity 1s ease;
+            pointer-events: none;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(6px);
+            padding: 12px 28px;
+            border-radius: 60px;
+            white-space: nowrap;
+        }
+        .tutorial-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 300;
+            pointer-events: none;
+        }
+        #loadingIndicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(200,180,140,0.5);
+            animation: pulseFlower 1.2s infinite ease-in-out;
+            z-index: 250;
+            pointer-events: none;
+            backdrop-filter: blur(2px);
+        }
+        @keyframes pulseFlower {
+            0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
+            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
+        }
+        #seedBallHint {
+            position: fixed;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            color: rgba(240,230,210,0.9);
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            background: rgba(0,0,0,0.4);
+            padding: 6px 12px;
+            border-radius: 40px;
+            backdrop-filter: blur(4px);
+            white-space: nowrap;
+            transition: opacity 1s;
+        }
+        #reportPage {
+            display: none;
+            background-color: #f5f0e8;
+            min-height: 100vh;
+            padding: 40px 30px;
+            font-family: Georgia, 'Times New Roman', Times, serif;
+            color: #3e362e;
+            position: relative;
+            z-index: 500;
+        }
+        .report-content {
+            max-width: 700px;
+            margin: 0 auto;
+            background: rgba(255,252,240,0.7);
+            padding: 30px 40px;
+            border-radius: 48px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(200,180,140,0.3);
+        }
+        hr.dashed {
+            border: none;
+            border-bottom: 1px dashed #c9b88c;
+            width: 60%;
+            margin: 20px auto;
+        }
+        .return-btn {
+            border: 2px solid #8b7d6b;
+            border-radius: 30px;
+            background: transparent;
+            color: #5c4a3a;
+            padding: 10px 28px;
+            cursor: pointer;
+            font-family: Georgia, serif;
+            font-size: 1rem;
+            transition: all 0.2s;
+            margin-top: 30px;
+        }
+        .return-btn:hover {
+            background: #e8dfce;
+            border-color: #5c4a3a;
+        }
+        #cameraDeniedOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(30, 28, 24, 0.96);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+            font-family: Georgia, serif;
+            text-align: center;
+            color: #f5efdf;
+            gap: 20px;
+        }
+        .denied-message {
+            background: rgba(0,0,0,0.6);
+            padding: 28px 40px;
+            border-radius: 48px;
+            border: 1px solid #c9b88c;
+            max-width: 80%;
+        }
+        .reload-btn {
+            background: #c9b88c;
+            color: #2c241a;
+            border: none;
+            padding: 10px 28px;
+            border-radius: 40px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="outputCanvas"></canvas>
+    <div id="debugPanel">
+        📷 <span id="camStatus">INIT</span> | ✋ <span id="handDetected">NO</span> | 👤 <span id="faceDetected">NO</span> | 🎭 <span id="gestureName">—</span> | 🔊 <span id="audioState">SUSPENDED</span> | 🖥️ <span id="fps">0</span> fps
+    </div>
+    <div id="hintPanel">
+        ✊🦋 握拳绽放 &nbsp;&nbsp;|&nbsp;&nbsp; 🖐️🌸 花开指尖<br>
+        👆💧 指尖落雨 &nbsp;&nbsp;|&nbsp;&nbsp; 🤏🌱 水滴凝珠 &nbsp;&nbsp;|&nbsp;&nbsp; ✋🍄 静止生蘑
+    </div>
+    <div id="introText"></div>
+    <div id="loadingIndicator"></div>
+    <div id="seedBallHint" style="display: none;"></div>
+
+    <!-- 报告页面 (wristband) -->
+    <div id="reportPage">
+        <div class="report-content">
+            <h1 style="font-size: 2rem; text-align: center; margin-bottom: 30px; font-style: italic;">🌿 Your Garden Weather Log · Past 7 Days</h1>
+            <div id="weatherSummary" style="font-size: 1.1rem; text-align: center; margin-bottom: 20px;">⛅ Cloudy 3 days · 🌧️ Rainy 2 days · 🌤️ Sunny 1 day · 🌫️ Foggy 1 day</div>
+            <hr class="dashed">
+            <div id="reminderStats" style="text-align: center; line-height: 1.8;"></div>
+            <hr class="dashed">
+            <div id="gestureTable" style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; text-align: center;"></div>
+            <hr class="dashed">
+            <div id="calmMoment" style="text-align: center; font-style: italic;"></div>
+            <div id="narrative" style="font-size: 1rem; text-align: center; font-style: italic; opacity: 0.85; margin-bottom: 8px;"></div>
+            <div id="highlight" style="text-align: center; margin-top: 12px;"></div>
+            <div id="closingMessage" style="text-align: center; font-style: italic; font-size: 1.1rem; margin-top: 20px;"></div>
+            <div style="text-align: center;">
+                <button id="returnToGardenBtn" class="return-btn">Return to Garden</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 相机拒绝遮罩 -->
+    <div id="cameraDeniedOverlay">
+        <div class="denied-message">
+            🌸 花园需要你的眼睛 🌸<br><br>
+            请允许摄像头权限，让手势唤醒魔法。<br>
+            <button id="reloadPageBtn" class="reload-btn">🔄 重新进入花园</button>
+        </div>
+    </div>
+
+    <script>
+        (function(){
+            // ======================== 文本数组 (便于修改) ========================
+            const entrancePhrases = [
+                "Your hands can grow what they once harmed.",
+                "Let your fingers bloom instead of bleed.",
+                "The garden doesn't ask you to be calm. It just gives your hands something else to do.",
+                "Every flower here was once a gesture that chose kindness over harm.",
+                "You're not broken. Your hands just need a different rhythm.",
+                "In this garden, restlessness becomes rain, and rain grows flowers.",
+                "Come as you are. Leave with petals, not wounds."
+            ];
+            const exitPhrases = [
+                "The garden stays. Come back when you need it.",
+                "Your flowers will wait for you.",
+                "Close the screen. Your hands remember now.",
+                "Until next time — let the butterflies rest.",
+                "You grew something today. That's not nothing.",
+                "The garden doesn't disappear. It just goes quiet until you return."
+            ];
+            const dandelionFarewellPhrases = [
+                "Breathe it out. The garden will catch it.",
+                "Let the wind carry what you're ready to release.",
+                "Some things are meant to scatter. Let them.",
+                "You came with restless hands. You leave with seeds in the air."
+            ];
+            const gestureCaptions = {
+                FIST: "握紧再松开 — 你的手刚刚呼出了一口气。蝴蝶从紧张中升起。渐进式肌肉放松：先绷紧，再放下。",
+                OPEN: "你的手指可以划出伤口，也可以开出一路繁花。每一个动作都是选择生长。",
+                TAP: "当急促的敲击欲念涌起，让它化作雨滴。风暴也会浇灌新芽。",
+                PINCH: "捏住空气，一滴水坠落。注意力就是水，花园是你的心。",
+                STILL: "静止也是一种生长。蘑菇在你停止尝试时出现。正念：允许此刻如其所是。"
+            };
+            const seedBallHintText = "One day, when you can't open this garden, your hands will remember. A seed ball can help.";
+
+            // ======================== 报告模式检测 ========================
+            const urlParams = new URLSearchParams(window.location.search);
+            const isReportMode = urlParams.get('report') === 'wristband';
+            const gestureUIElements = ['webcam', 'outputCanvas', 'debugPanel', 'hintPanel', 'introText', 'loadingIndicator', 'seedBallHint'];
+            const reportDiv = document.getElementById('reportPage');
+            const cameraOverlay = document.getElementById('cameraDeniedOverlay');
+
+            if (isReportMode) {
+                gestureUIElements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                reportDiv.style.display = 'block';
+                const reminders = parseInt(urlParams.get('reminders')) || 14;
+                const flowers = parseInt(urlParams.get('flowers')) || 47;
+                const butterflies = parseInt(urlParams.get('butterflies')) || 23;
+                const rains = parseInt(urlParams.get('rains')) || 8;
+                const mushrooms = parseInt(urlParams.get('mushrooms')) || 5;
+                const calmTime = urlParams.get('calmTime') || "Thursday at 3:17pm";
+                const openedCount = Math.round(reminders * 0.8);
+                document.getElementById('reminderStats').innerHTML = `
+                    You were reminded <strong>${reminders}</strong> times.<br>
+                    <strong>${openedCount}</strong> times, you opened the garden.<br>
+                    Your hands chose growth over harm.
+                `;
+                document.getElementById('gestureTable').innerHTML = `
+                    <div>🌸 Flowers planted &nbsp; <strong>${flowers}</strong></div>
+                    <div>🦋 Butterflies &nbsp; <strong>${butterflies}</strong></div>
+                    <div>💧 Rains &nbsp; <strong>${rains}</strong></div>
+                    <div>🍄 Mushrooms &nbsp; <strong>${mushrooms}</strong></div>
+                `;
+                document.getElementById('calmMoment').innerHTML = `Your quietest moment was ${calmTime}.`;
+                document.getElementById('narrative').innerHTML = `Your garden's most common weather was Cloudy — growing while waiting.`;
+                document.getElementById('highlight').innerHTML = `The heaviest rain was on Tuesday, but you planted <strong>${flowers}</strong> flowers that day.`;
+                const reportClosingMessages = [
+                    "You've been through rain this week, but your flowers are still blooming. That's not nothing.",
+                    "The garden doesn't count your storms. It counts what grew because of them.",
+                    "Every reminder you answered became a flower. Look how many you've grown.",
+                    "Your hands are learning. Slowly, imperfectly — but they're learning."
+                ];
+                document.getElementById('closingMessage').innerHTML = reportClosingMessages[Math.floor(Math.random() * reportClosingMessages.length)];
+                document.getElementById('returnToGardenBtn').addEventListener('click', () => {
+                    window.location.href = window.location.pathname;
+                });
+                return; // 停止执行手势逻辑
+            }
+
+            // ======================== 正常模式 ========================
+            gestureUIElements.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = '';
+            });
+            reportDiv.style.display = 'none';
+            cameraOverlay.style.display = 'none';
+
+            // ---------- 全局状态 ----------
+            let canvas = document.getElementById('outputCanvas'), ctx = canvas.getContext('2d');
+            let video = document.getElementById('webcam');
+            let introDiv = document.getElementById('introText');
+            let effects = [];
+            let captions = [];
+            let lastTriggerTime = 0;
+            const COOLDOWN_MS = 800;
+            let currentGesture = "NONE";
+            let handLandmarks = null;
+            let handDetectedFlag = false;
+            let lastPalmPos = { x: 0.5, y: 0.5 };
+            let stillTimer = 0;
+            let lastFrameTime = performance.now();
+            let fps = 0, frameCount = 0;
+            let lastFlowerSpawn = 0;
+            const FLOWER_SPAWN_INTERVAL = 70;
+            let prevIndexTip = { x: 0, y: 0 };
+            let tapCooldown = 0;
+            let fistReleasedAt = 0, openHoldStart = 0, persistenceRingActive = false, ringCenter = { x: 0, y: 0 }, ringProgress = 0;
+            let stillBreathingActive = false;
+            let nightMode = false;
+            function updateNightMode() { const hour = new Date().getHours(); nightMode = (hour >= 19 || hour < 6); }
+            updateNightMode();
+
+            // 面部相关
+            let faceLandmarks = null;
+            let faceDetectedFlag = false;
+            let smileCooldown = 0;
+            let eyesClosedTimer = 0;
+            let previousNoseY = 0;
+            let headNodDetected = false;
+
+            // 手势计数 / 蒲公英
+            let totalGestures = 0;
+            let handAbsentTimer = 0;
+            let dandelionActive = false;
+            let dandelionSeeds = [];
+            let farewellDisplayed = false;
+            let dandelionStem = null;
+
+            // 环境特效
+            let pollenParticles = [];
+            let occasionalPetals = [];
+            let puddleOpacity = 0;
+            let rainActiveTime = 0;
+            let lastRainFrame = false;
+            let sunlightEffectActive = false;
+            let sunlightUntil = 0;
+            let lastStillPetalSpawn = 0;
+            const STILL_PETAL_COOLDOWN = 5000;
+            let colorShift = 0;
+
+            // 种子球记录
+            let gestureTypesUsed = [];
+            try {
+                const stored = localStorage.getItem('gestureTypesUsed');
+                if (stored) gestureTypesUsed = JSON.parse(stored);
+            } catch(e) { gestureTypesUsed = []; }
+
+            // 性能模式
+            let fpsHistory = [];
+            let lowPerformanceMode = false;
+            let lowPerfStartTime = 0;
+            let particleMultiplier = 1.0;
+            const NORMAL_POLLEN = 14;
+            const LOW_POLLEN = 8;
+
+            // ---------- 辅助函数 ----------
+            function randomRange(min, max) { return min + Math.random() * (max - min); }
+            function showCaption(text, x, y, chance = 1.0) {
+                if (Math.random() > chance) return;
+                captions.push({ text, x: x - 50, y: y - 30, life: 1.0 });
+            }
+
+            function updateGestureUsed(gestureName) {
+                if (!gestureName || gestureName === "NONE") return;
+                let mapped = "";
+                if (gestureName === "FIST") mapped = "fist";
+                else if (gestureName === "OPEN") mapped = "open";
+                else if (gestureName === "TAP") mapped = "tap";
+                else if (gestureName === "PINCH") mapped = "pinch";
+                else if (gestureName === "STILL") mapped = "still";
+                else return;
+                if (!gestureTypesUsed.includes(mapped)) {
+                    gestureTypesUsed.push(mapped);
+                    localStorage.setItem('gestureTypesUsed', JSON.stringify(gestureTypesUsed));
+                    if (gestureTypesUsed.length >= 5 && !localStorage.getItem('seedBallHintShown')) {
+                        const hintDiv = document.getElementById('seedBallHint');
+                        hintDiv.innerText = seedBallHintText;
+                        hintDiv.style.display = 'block';
+                        setTimeout(() => {
+                            hintDiv.style.opacity = '0';
+                            setTimeout(() => { hintDiv.style.display = 'none'; hintDiv.style.opacity = ''; }, 1000);
+                        }, 5000);
+                        localStorage.setItem('seedBallHintShown', 'true');
+                    }
+                }
+            }
+
+            // 性能动态调整花粉
+            function adjustPollenCount() {
+                if (lowPerformanceMode && pollenParticles.length > LOW_POLLEN) {
+                    pollenParticles = pollenParticles.slice(0, LOW_POLLEN);
+                } else if (!lowPerformanceMode && pollenParticles.length < NORMAL_POLLEN) {
+                    let needed = NORMAL_POLLEN - pollenParticles.length;
+                    for (let i = 0; i < needed; i++) {
+                        pollenParticles.push({
+                            x: Math.random() * canvas.width,
+                            y: Math.random() * canvas.height,
+                            radius: randomRange(1, 3),
+                            speedY: randomRange(0.2, 0.6),
+                            speedX: randomRange(-0.2, 0.2),
+                            phase: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+            }
+
+            function updatePerformanceMode(currentFPS) {
+                fpsHistory.push(currentFPS);
+                if (fpsHistory.length > 15) fpsHistory.shift();
+                const avgFPS = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+                if (!lowPerformanceMode && avgFPS < 30 && fpsHistory.length > 5) {
+                    lowPerformanceMode = true;
+                    lowPerfStartTime = Date.now();
+                    particleMultiplier = 0.6;
+                    adjustPollenCount();
+                } else if (lowPerformanceMode && avgFPS > 45 && Date.now() - lowPerfStartTime > 5000) {
+                    lowPerformanceMode = false;
+                    particleMultiplier = 1.0;
+                    adjustPollenCount();
+                }
+            }
+            function getButterflyCount() { return lowPerformanceMode ? 4 : 7; }
+            function getRaindropCount() { return lowPerformanceMode ? 2 : 3; }
+
+            // ---------- 音频系统 ----------
+            let audioCtx = null;
+            let audioState = "SUSPENDED";
+            let rainNoiseNode = null, rainGainNode = null, rainFilter = null;
+            let ambientNoiseNode = null, ambientGainNode = null;
+
+            function initAudio() {
+                if (audioCtx) return;
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const bufferSize = 4096;
+                const noiseBuffer = (ctx) => {
+                    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                    return buffer;
+                };
+                const whiteNoise = noiseBuffer(audioCtx);
+                ambientNoiseNode = audioCtx.createBufferSource();
+                ambientNoiseNode.buffer = whiteNoise;
+                ambientNoiseNode.loop = true;
+                ambientGainNode = audioCtx.createGain();
+                ambientGainNode.gain.value = 0.012;
+                const ambientFilter = audioCtx.createBiquadFilter();
+                ambientFilter.type = "lowpass";
+                ambientFilter.frequency.value = 1000;
+                ambientNoiseNode.connect(ambientFilter).connect(ambientGainNode).connect(audioCtx.destination);
+                ambientNoiseNode.start();
+
+                const rainBuf = noiseBuffer(audioCtx);
+                rainNoiseNode = audioCtx.createBufferSource();
+                rainNoiseNode.buffer = rainBuf;
+                rainNoiseNode.loop = true;
+                rainFilter = audioCtx.createBiquadFilter();
+                rainFilter.type = "lowpass";
+                rainFilter.frequency.value = 2000;
+                rainGainNode = audioCtx.createGain();
+                rainGainNode.gain.value = 0;
+                rainNoiseNode.connect(rainFilter).connect(rainGainNode).connect(audioCtx.destination);
+                rainNoiseNode.start();
+            }
+
+            function resumeAudioOnInteraction() {
+                if (audioCtx && audioCtx.state === "suspended") {
+                    audioCtx.resume().then(() => {
+                        audioState = "RUNNING";
+                        document.getElementById('audioState').innerText = "RUNNING";
+                    });
+                } else if (!audioCtx) initAudio();
+            }
+            document.body.addEventListener('click', resumeAudioOnInteraction);
+            document.body.addEventListener('touchstart', resumeAudioOnInteraction);
+
+            function playButterflySound() { /* 同前实现 - 略保持简洁 */ if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const noise = audioCtx.createBufferSource(); const buf = audioCtx.createBuffer(1, 2048, audioCtx.sampleRate); const data = buf.getChannelData(0); for (let i=0;i<2048;i++) data[i]=Math.random()*2-1; noise.buffer = buf; const filter = audioCtx.createBiquadFilter(); filter.type = "bandpass"; filter.frequency.value = 800; filter.Q.value = 0.5; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.exponentialRampToValueAtTime(0.08, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.2); noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(); noise.stop(now+0.22); }
+            function playChime() { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.type = "sine"; osc.frequency.value = 805; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.06, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.3); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.32); }
+            function updateRainVolume(count) { if (!rainGainNode || audioCtx?.state !== "running") return; let desired = Math.min(0.08, count * 0.008 * particleMultiplier); rainGainNode.gain.linearRampToValueAtTime(desired, audioCtx.currentTime + 0.05); }
+            function playDropSound() { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const noise = audioCtx.createBufferSource(); const buf = audioCtx.createBuffer(1, 2000, audioCtx.sampleRate); const d = buf.getChannelData(0); for (let i=0;i<2000;i++) d[i]=Math.random()*2-1; noise.buffer = buf; const filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 600; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.05, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.15); noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(); noise.stop(now+0.16); }
+            function playMushroomHum() { if (!audioCtx) return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.value = 120; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.03, now+0.5); gain.gain.exponentialRampToValueAtTime(0.0001, now+1); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+1); }
+            function playMushroomBell() { if (!audioCtx) return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.value = 2010; const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.1); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.12); }
+            setInterval(() => { if (!audioCtx || audioCtx.state !== "running") return; const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); osc.frequency.setValueAtTime(1800, now); osc.frequency.exponentialRampToValueAtTime(1200, now+0.15); const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.2); osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(now+0.2); }, 25000 + Math.random()*15000);
+
+            // ---------- 特效生成 ----------
+            function addButterflyBurst(x, y) {
+                let count = getButterflyCount();
+                for (let i = 0; i < count; i++) effects.push({ type: 'butterfly', x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 2.2, vy: -Math.random() * 2 - 1, life: 1, angle: Math.random() * Math.PI * 2 });
+                showCaption(gestureCaptions.FIST, x, y - 40, 1.0);
+                playButterflySound();
+                totalGestures++;
+                updateGestureUsed("FIST");
+            }
+            function addFlower(x, y) {
+                effects.push({ type: 'flower', x, y, life: 1.0, petalColors: ['#e8c4b8', '#f0d8c0', '#f5e8c8', '#fce4c8', '#f8d8b0'] });
+                if (Math.random() < 0.2) showCaption(gestureCaptions.OPEN, x, y - 20, 0.25);
+                playChime();
+                totalGestures++;
+                updateGestureUsed("OPEN");
+            }
+            function addRain(x, y) {
+                let count = getRaindropCount();
+                for (let i = 0; i < count; i++) effects.push({ type: 'rain', x: x + (Math.random() - 0.5) * 12, y, vy: 2 + Math.random() * 3, life: 1, tilt: (Math.random() - 0.5) * 0.3 });
+                if (Math.random() < 0.25) showCaption(gestureCaptions.TAP, x, y - 25, 0.25);
+                totalGestures++;
+                updateGestureUsed("TAP");
+            }
+            function addTeardrop(x, y) {
+                effects.push({ type: 'droplet', x, y, vy: 2, life: 1 });
+                showCaption(gestureCaptions.PINCH, x, y - 20, 1.0);
+                playDropSound();
+                totalGestures++;
+                updateGestureUsed("PINCH");
+            }
+            function addMushroom(x, y) {
+                effects.push({ type: 'mushroom', x, y, life: 1.0, grown: 0.2, birth: Date.now(), snailDrawn: false });
+                showCaption(gestureCaptions.STILL, x, y - 35, 1.0);
+                playMushroomHum();
+                playMushroomBell();
+                totalGestures++;
+                updateGestureUsed("STILL");
+            }
+
+            // 环境初始化
+            function initPollen() {
+                let count = lowPerformanceMode ? LOW_POLLEN : NORMAL_POLLEN;
+                pollenParticles = [];
+                for (let i = 0; i < count; i++) {
+                    pollenParticles.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, radius: randomRange(1, 3), speedY: randomRange(0.2, 0.6), speedX: randomRange(-0.2, 0.2), phase: Math.random() * Math.PI * 2 });
+                }
+            }
+            function spawnOccasionalPetal() {
+                if (occasionalPetals.length > (lowPerformanceMode ? 4 : 6)) return;
+                occasionalPetals.push({ x: Math.random() * canvas.width, y: 0, width: randomRange(8, 12), height: randomRange(5, 7), angle: 0, speedY: randomRange(0.3, 0.7), swingAmp: randomRange(10, 20), swingFreq: 0.02, swingPhase: 0, color: `rgba(255, ${210 + Math.random() * 30}, ${200 + Math.random() * 50}, 0.7)` });
+            }
+            setInterval(() => { if (Math.random() < 0.2) spawnOccasionalPetal(); }, lowPerformanceMode ? 27000 : 17000);
+
+            function shiftColor(hex, shiftVal) {
+                let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+                let shift = shiftVal * 30;
+                if (nightMode) { r = Math.min(255, r + 12); g = Math.min(255, g + 4); b = Math.max(0, b - 8); }
+                r = Math.min(255, Math.max(0, r + shift * 2));
+                g = Math.min(255, Math.max(0, g - shift));
+                b = Math.min(255, Math.max(0, b - shift * 1.5));
+                return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
+            }
+
+            // 手势识别
+            function detectGesture(lm) {
+                if (!lm) return "NONE";
+                const palmCenter = { x: (lm[0].x + lm[5].x + lm[17].x) / 3, y: (lm[0].y + lm[5].y + lm[17].y) / 3 };
+                const dists = [4, 8, 12, 16, 20].map(i => Math.hypot(lm[i].x - palmCenter.x, lm[i].y - palmCenter.y));
+                const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+                const move = Math.hypot(lm[0].x - lastPalmPos.x, lm[0].y - lastPalmPos.y);
+                lastPalmPos = { x: lm[0].x, y: lm[0].y };
+                if (move < 0.003) stillTimer += 16; else stillTimer = 0;
+                if (stillTimer > 1400) return "STILL";
+                if (dists.every(d => d < 0.26)) return "FIST";
+                if (dists.every(d => d > 0.38)) return "OPEN";
+                if (pinchDist < 0.045) return "PINCH";
+                const idxTip = lm[8];
+                const deltaY = Math.abs(idxTip.y - prevIndexTip.y);
+                prevIndexTip = { x: idxTip.x, y: idxTip.y };
+                if (deltaY > 0.018 && Date.now() > tapCooldown) { tapCooldown = Date.now() + 400; return "TAP"; }
+                return "NONE";
+            }
+
+            // 面部交互
+            function processFaceLandmarks(landmarks) {
+                if (!landmarks) return;
+                const leftCorner = landmarks[61], rightCorner = landmarks[291], upperLip = landmarks[13], lowerLip = landmarks[14];
+                const mouthWidth = Math.hypot(leftCorner.x - rightCorner.x, leftCorner.y - rightCorner.y);
+                const mouthHeight = Math.abs(upperLip.y - lowerLip.y);
+                if (mouthHeight / (mouthWidth + 0.001) > 0.08 && Date.now() > smileCooldown) {
+                    smileCooldown = Date.now() + 3000;
+                    let flowerX = (leftCorner.x + rightCorner.x) / 2 * canvas.width;
+                    let flowerY = (leftCorner.y + upperLip.y) / 2 * canvas.height;
+                    effects.push({ type: 'flower', x: flowerX, y: flowerY, life: 1.0, petalColors: ['#f8c8b8', '#fcd0c0'] });
+                }
+                const leftEyeOpen = Math.abs(landmarks[159].y - landmarks[145].y);
+                const rightEyeOpen = Math.abs(landmarks[386].y - landmarks[374].y);
+                if (leftEyeOpen < 0.012 && rightEyeOpen < 0.012) {
+                    eyesClosedTimer += 0.033;
+                    if (eyesClosedTimer > 2.0) colorShift = Math.min(0.05, colorShift + 0.003);
+                } else { eyesClosedTimer = 0; if (colorShift > 0) colorShift *= 0.99; }
+                const noseY = landmarks[1].y;
+                if (previousNoseY !== 0) {
+                    const delta = noseY - previousNoseY;
+                    if (Math.abs(delta) > 0.018 && !headNodDetected) {
+                        headNodDetected = true;
+                        effects.forEach(e => { if (e.type === 'flower') e.sway = 1.0; });
+                        setTimeout(() => headNodDetected = false, 800);
+                    }
+                }
+                previousNoseY = noseY;
+            }
+
+            // 蒲公英
+            function checkDandelionTrigger() {
+                if (dandelionActive) return;
+                if (totalGestures >= 10 && handAbsentTimer >= 10) {
+                    dandelionActive = true;
+                    dandelionStem = { x: canvas.width / 2, y: canvas.height / 2 };
+                    dandelionSeeds = [];
+                    farewellDisplayed = false;
+                }
+            }
+            function drawDandelion() {
+                if (!dandelionActive) return;
+                ctx.beginPath();
+                ctx.moveTo(dandelionStem.x, dandelionStem.y + 40);
+                ctx.lineTo(dandelionStem.x, dandelionStem.y + 100);
+                ctx.strokeStyle = "#7c6b4e";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(dandelionStem.x, dandelionStem.y + 40, 24, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(245,240,210,0.7)";
+                ctx.fill();
+                for (let i = 0; i < 36; i++) {
+                    let ang = i * Math.PI * 2 / 36;
+                    ctx.beginPath();
+                    ctx.moveTo(dandelionStem.x, dandelionStem.y + 40);
+                    ctx.lineTo(dandelionStem.x + Math.cos(ang) * 24, dandelionStem.y + 40 + Math.sin(ang) * 24);
+                    ctx.strokeStyle = "rgba(200,190,160,0.6)";
+                    ctx.stroke();
+                }
+                if (!farewellDisplayed && dandelionSeeds.length === 0 && faceLandmarks) {
+                    const upper = faceLandmarks[13], lower = faceLandmarks[14];
+                    if (Math.abs(upper.y - lower.y) > 0.045) {
+                        for (let s = 0; s < 12; s++) {
+                            let angle = Math.random() * Math.PI * 2;
+                            let speed = randomRange(0.8, 1.5);
+                            dandelionSeeds.push({ x: dandelionStem.x, y: dandelionStem.y + 40, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 0.6, life: 1.0 });
+                        }
+                        farewellDisplayed = true;
+                    }
+                }
+                for (let i = 0; i < dandelionSeeds.length; i++) {
+                    let s = dandelionSeeds[i];
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(245,235,200,${s.life * 0.8})`;
+                    ctx.fill();
+                    s.x += s.vx;
+                    s.y += s.vy;
+                    s.vy += 0.03;
+                    s.life -= 0.005;
+                }
+                dandelionSeeds = dandelionSeeds.filter(s => s.life > 0);
+                if (farewellDisplayed && dandelionSeeds.length === 0 && !window.dandelionOverlayShown) {
+                    window.dandelionOverlayShown = true;
+                    let overlay = document.createElement('div');
+                    let phrase = dandelionFarewellPhrases[Math.floor(Math.random() * dandelionFarewellPhrases.length)];
+                    overlay.innerText = phrase;
+                    overlay.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:1.4rem; background:rgba(0,0,0,0.5); padding:20px; border-radius:40px; z-index:400; text-align:center;';
+                    document.body.appendChild(overlay);
+                    setTimeout(() => {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => { overlay.remove(); dandelionActive = false; }, 1000);
+                    }, 3000);
+                }
+            }
+
+            // 动画循环 (精简但包含所有特效)
+            let loadingHidden = false;
+            function animate() {
+                if (!ctx) return;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // 花粉
+                for (let p of pollenParticles) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255,245,200,${0.3 + Math.sin(Date.now() * 0.002 + p.phase) * 0.2})`;
+                    ctx.fill();
+                    p.y -= p.speedY;
+                    p.x += p.speedX;
+                    if (p.y < 0) p.y = canvas.height;
+                    if (p.x < 0) p.x = canvas.width;
+                    if (p.x > canvas.width) p.x = 0;
+                }
+                // 飘落花瓣
+                for (let i = 0; i < occasionalPetals.length; i++) {
+                    let p = occasionalPetals[i];
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.angle);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, p.width / 2, p.height / 2, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                    ctx.restore();
+                    p.y += p.speedY;
+                    p.x += Math.sin(Date.now() * p.swingFreq + p.swingPhase) * 0.5;
+                    p.angle += 0.01;
+                    if (p.y > canvas.height) occasionalPetals.splice(i, 1);
+                }
+                // 主要特效 (蝴蝶、花朵、雨、水滴、蘑菇)
+                for (let i = 0; i < effects.length; i++) {
+                    let e = effects[i];
+                    if (e.life <= 0) continue;
+                    switch (e.type) {
+                        case 'butterfly':
+                            ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle);
+                            const grad = ctx.createRadialGradient(-3, -2, 2, 0, 0, 12);
+                            grad.addColorStop(0, '#f7b42c');
+                            grad.addColorStop(1, `rgba(255,245,210,${0.7 * e.life})`);
+                            ctx.beginPath(); ctx.ellipse(-8, -4, 10, 5, -0.3, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+                            ctx.beginPath(); ctx.ellipse(8, -4, 10, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+                            ctx.beginPath(); ctx.ellipse(-6, 3, 7, 4, 0.2, 0, Math.PI * 2); ctx.fill();
+                            ctx.beginPath(); ctx.ellipse(6, 3, 7, 4, -0.2, 0, Math.PI * 2); ctx.fill();
+                            ctx.restore(); e.x += e.vx; e.y += e.vy; e.vy += 0.08; e.life -= 0.008;
+                            break;
+                        case 'flower':
+                            let swayOffset = e.sway ? Math.sin(Date.now() * 0.02) * 3 * e.sway : 0;
+                            if (e.sway) e.sway *= 0.95;
+                            for (let a = 0; a < 6; a++) {
+                                let ang = a * Math.PI * 2 / 6;
+                                let offX = Math.cos(ang) * 11 * e.life + swayOffset;
+                                let offY = Math.sin(ang) * 11 * e.life;
+                                ctx.beginPath();
+                                ctx.ellipse(e.x + offX, e.y + offY, 7 * e.life, 4 * e.life, ang, 0, Math.PI * 2);
+                                let baseColor = e.petalColors[a % e.petalColors.length];
+                                ctx.fillStyle = shiftColor(baseColor, colorShift);
+                                ctx.fill();
+                            }
+                            ctx.beginPath(); ctx.arc(e.x, e.y, 3 * e.life, 0, Math.PI * 2); ctx.fillStyle = '#c9a87b'; ctx.fill();
+                            e.life -= 0.007;
+                            break;
+                        case 'rain':
+                            ctx.fillStyle = `rgba(170,200,210,${0.6 * e.life})`;
+                            ctx.fillRect(e.x - 1.5, e.y, 3, 14 * e.life);
+                            e.y += e.vy;
+                            e.life -= 0.012;
+                            if (e.y > canvas.height) { e.life = 0; effects.push({ type: 'splash', x: e.x, y: canvas.height - 5, life: 0.8, radius: 5 }); }
+                            break;
+                        case 'splash':
+                            ctx.beginPath(); ctx.arc(e.x, e.y, e.radius * (1 - e.life), 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(190,220,230,${0.5 * e.life})`; ctx.fill();
+                            e.life -= 0.03; e.radius += 1.5;
+                            break;
+                        case 'droplet':
+                            ctx.beginPath(); ctx.moveTo(e.x, e.y);
+                            ctx.quadraticCurveTo(e.x - 3, e.y + 6, e.x, e.y + 12);
+                            ctx.quadraticCurveTo(e.x + 3, e.y + 6, e.x, e.y);
+                            ctx.fillStyle = `rgba(150,200,210,${0.7 * e.life})`; ctx.fill();
+                            e.y += e.vy; e.vy += 0.3; e.life -= 0.012;
+                            break;
+                        case 'mushroom':
+                            let growth = Math.min(1, e.life + 0.3);
+                            ctx.fillStyle = '#c49a6c';
+                            ctx.beginPath(); ctx.ellipse(e.x, e.y - 4 * growth, 9 * growth, 8 * growth, 0, 0, Math.PI * 2); ctx.fill();
+                            ctx.fillStyle = '#e8dcc8';
+                            ctx.fillRect(e.x - 3 * growth, e.y - 2 * growth, 6 * growth, 14 * growth);
+                            if (e.birth && (Date.now() - e.birth) > 8000 && !e.snailDrawn) {
+                                e.snailDrawn = true;
+                                ctx.save(); ctx.translate(e.x, e.y - 10);
+                                ctx.fillStyle = '#9c7c5e'; ctx.beginPath(); ctx.ellipse(0, 0, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+                                ctx.fillStyle = '#d4b48c'; ctx.beginPath(); ctx.arc(2, -2, 1.5, 0, Math.PI * 2); ctx.fill();
+                                ctx.fillStyle = '#4a3728'; ctx.beginPath(); ctx.moveTo(3, -2.5); ctx.lineTo(5, -3); ctx.lineTo(4, -1.5); ctx.fill();
+                                ctx.beginPath(); ctx.moveTo(2.5, -2); ctx.lineTo(4, -2.2); ctx.lineTo(3, -1); ctx.fill();
+                                ctx.restore();
+                            }
+                            e.life -= 0.005;
+                            break;
+                    }
+                }
+                effects = effects.filter(e => e.life > 0);
+                // 雨量、水坑、阳光
+                let rainCount = effects.filter(e => e.type === 'rain').length;
+                updateRainVolume(rainCount);
+                if (rainCount > 0) rainActiveTime += 0.033; else rainActiveTime = Math.max(0, rainActiveTime - 0.05);
+                if (rainActiveTime > 5) puddleOpacity = Math.min(0.25, puddleOpacity + 0.008); else puddleOpacity = Math.max(0, puddleOpacity - 0.005);
+                if (rainCount === 0 && lastRainFrame === true && rainActiveTime > 10 && !sunlightEffectActive) {
+                    sunlightEffectActive = true; sunlightUntil = Date.now() + 3000;
+                    effects.push({ type: 'butterfly', x: canvas.width / 2 + (Math.random() - 0.5) * 200, y: canvas.height / 2, vx: (Math.random() - 0.5) * 1.5, vy: -Math.random() - 0.5, life: 1, angle: Math.random() * Math.PI * 2 });
+                }
+                lastRainFrame = rainCount > 0;
+                if (puddleOpacity > 0) {
+                    ctx.fillStyle = `rgba(180,200,210,${puddleOpacity * 0.4})`;
+                    ctx.beginPath(); ctx.ellipse(canvas.width / 2, canvas.height - 20, 150, 30, 0, 0, Math.PI * 2); ctx.fill();
+                }
+                if (sunlightEffectActive && Date.now() < sunlightUntil) {
+                    ctx.fillStyle = `rgba(255, 240, 200, 0.05)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                } else { sunlightEffectActive = false; }
+                // 呼吸环 + 持久光圈
+                if (stillBreathingActive) {
+                    const t = (Date.now() % 8000) / 8000;
+                    const scale = t < 0.5 ? 0.8 + t * 0.8 : 1.6 - (t - 0.5) * 1.6;
+                    ctx.beginPath(); ctx.arc(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35 * scale, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(220,200,170,0.12)`; ctx.lineWidth = 6; ctx.stroke();
+                }
+                if (persistenceRingActive && ringProgress < 1) {
+                    ringProgress += 0.012;
+                    ctx.beginPath(); ctx.arc(ringCenter.x * canvas.width, ringCenter.y * canvas.height, 40 + ringProgress * 20, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(210, 180, 140, ${0.2 * (1 - ringProgress)})`;
+                    ctx.lineWidth = 2; ctx.stroke();
+                    if (ringProgress >= 1) persistenceRingActive = false;
+                }
+                // 暗角 + 蒲公英
+                const vignette = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.4, canvas.width / 2, canvas.height / 2, canvas.width * 0.9);
+                vignette.addColorStop(0, 'rgba(0,0,0,0)');
+                vignette.addColorStop(1, nightMode ? 'rgba(60,40,30,0.2)' : 'rgba(80,60,40,0.12)');
+                ctx.fillStyle = vignette; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                drawDandelion(); checkDandelionTrigger();
+                handAbsentTimer += 0.016;
+                // 浮动字幕
+                for (let i = 0; i < captions.length; i++) {
+                    ctx.font = "italic 14px 'Segoe UI'";
+                    ctx.fillStyle = `rgba(255,245,220,${captions[i].life * 0.9})`;
+                    ctx.fillText(captions[i].text, captions[i].x, captions[i].y - (1 - captions[i].life) * 15);
+                    captions[i].life -= 0.005;
+                }
+                captions = captions.filter(c => c.life > 0);
+                // FPS
+                frameCount++;
+                const nowPerf = performance.now();
+                if (nowPerf - lastFrameTime >= 1000) {
+                    let currentFPS = frameCount;
+                    document.getElementById('fps').innerText = currentFPS;
+                    updatePerformanceMode(currentFPS);
+                    frameCount = 0;
+                    lastFrameTime = nowPerf;
+                }
+                if (!loadingHidden && handDetectedFlag) {
+                    document.getElementById('loadingIndicator').style.display = 'none';
+                    loadingHidden = true;
+                }
+                requestAnimationFrame(animate);
+            }
+
+            // MediaPipe 设置 (全局对象)
+            let handsInstance = null, faceMeshInstance = null;
+            async function initMediaPipe() {
+                try {
+                    handsInstance = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+                    handsInstance.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.65 });
+                    handsInstance.onResults((results) => {
+                        handDetectedFlag = results.multiHandLandmarks?.length > 0;
+                        document.getElementById('handDetected').innerText = handDetectedFlag ? "YES" : "NO";
+                        if (handDetectedFlag) {
+                            handLandmarks = results.multiHandLandmarks[0];
+                            currentGesture = detectGesture(handLandmarks);
+                            document.getElementById('gestureName').innerText = currentGesture;
+                            const palm = handLandmarks[9];
+                            let x = palm.x * canvas.width, y = palm.y * canvas.height;
+                            const now = Date.now();
+                            if (now - lastTriggerTime > COOLDOWN_MS) {
+                                if (currentGesture === "FIST") addButterflyBurst(x, y);
+                                else if (currentGesture === "PINCH") addTeardrop(x, y);
+                                else if (currentGesture === "TAP") addRain(x, y);
+                                else if (currentGesture === "STILL") addMushroom(x, y);
+                                else if (currentGesture === "OPEN" && now - lastFlowerSpawn > FLOWER_SPAWN_INTERVAL) {
+                                    lastFlowerSpawn = now;
+                                    for (let idx of [4, 8, 12, 16, 20]) {
+                                        let tip = handLandmarks[idx];
+                                        if (tip) addFlower(tip.x * canvas.width, tip.y * canvas.height);
+                                    }
+                                }
+                                lastTriggerTime = now;
+                            }
+                            // 持久光圈检测
+                            if (currentGesture === "FIST") { openHoldStart = 0; fistReleasedAt = now; }
+                            if (currentGesture === "OPEN" && fistReleasedAt > 0 && openHoldStart === 0) openHoldStart = now;
+                            if (openHoldStart > 0 && (now - openHoldStart) > 3000 && !persistenceRingActive) {
+                                persistenceRingActive = true;
+                                ringProgress = 0;
+                                ringCenter = handLandmarks[9];
+                                openHoldStart = 0;
+                                fistReleasedAt = 0;
+                            }
+                            if (currentGesture === "STILL") stillBreathingActive = true;
+                            else stillBreathingActive = false;
+                            // 静止时额外花瓣
+                            if (currentGesture === "STILL" && Date.now() - lastStillPetalSpawn > STILL_PETAL_COOLDOWN) {
+                                const mushrooms = effects.filter(e => e.type === 'mushroom' && e.life > 0.5);
+                                if (mushrooms.length) {
+                                    lastStillPetalSpawn = Date.now();
+                                    const mush = mushrooms[0];
+                                    occasionalPetals.push({
+                                        x: mush.x + (Math.random() - 0.5) * 20, y: mush.y - 15,
+                                        width: randomRange(6, 8), height: randomRange(4, 6), angle: 0,
+                                        speedY: randomRange(0.2, 0.4), swingAmp: randomRange(5, 10), swingFreq: 0.02, swingPhase: 0,
+                                        color: `rgba(255, 220, 210, 0.7)`
+                                    });
+                                }
+                            }
+                            handAbsentTimer = 0;
+                        } else {
+                            handAbsentTimer += 0.033;
+                            handDetectedFlag = false;
+                            document.getElementById('handDetected').innerText = "NO";
+                        }
+                    });
+                    faceMeshInstance = new FaceMesh({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
+                    faceMeshInstance.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6 });
+                    faceMeshInstance.onResults((res) => {
+                        faceDetectedFlag = res.multiFaceLandmarks?.length > 0;
+                        document.getElementById('faceDetected').innerText = faceDetectedFlag ? "YES" : "NO";
+                        if (faceDetectedFlag) {
+                            faceLandmarks = res.multiFaceLandmarks[0];
+                            processFaceLandmarks(faceLandmarks);
+                        } else faceLandmarks = null;
+                    });
+                } catch (err) {
+                    console.error("MediaPipe init error", err);
+                    cameraOverlay.querySelector('.denied-message').innerHTML = "🌸 花园加载失败 🌸<br><br>无法启动视觉模型，请检查网络后刷新页面。<br><button id='reloadPageBtn' class='reload-btn'>🔄 重新加载</button>";
+                    cameraOverlay.style.display = 'flex';
+                    gestureUIElements.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+                    document.getElementById('reloadPageBtn').addEventListener('click', () => location.reload());
+                }
+            }
+
+            async function startCamera() {
+                try {
+                    const camera = new Camera(video, {
+                        onFrame: async () => {
+                            if (handsInstance) await handsInstance.send({ image: video });
+                            if (faceMeshInstance) await faceMeshInstance.send({ image: video });
+                        }
+                    });
+                    await camera.start();
+                    document.getElementById('camStatus').innerText = "ON";
+                } catch (e) {
+                    document.getElementById('camStatus').innerText = "DENIED";
+                    cameraOverlay.style.display = 'flex';
+                    gestureUIElements.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+                    document.getElementById('reloadPageBtn').addEventListener('click', () => location.reload());
+                }
+            }
+
+            // 教程
+            function startTutorial() {
+                if (localStorage.getItem('tutorialShown')) return;
+                const gesturesSeq = ["FIST", "OPEN", "TAP", "PINCH", "STILL"];
+                const labels = ["✊ 握拳 → 蝴蝶", "🖐️ 五指张开 → 花朵", "👆 食指敲击 → 雨滴", "🤏 捏合 → 水珠", "✋ 静止 → 蘑菇"];
+                let step = 0;
+                const overlay = document.createElement('div');
+                overlay.className = 'tutorial-overlay';
+                overlay.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:300;';
+                document.body.appendChild(overlay);
+                const ctxOverlay = overlay.getContext ? overlay.getContext('2d') : null;
+                if (!ctxOverlay) return;
+                const interval = setInterval(() => {
+                    if (step >= gesturesSeq.length) {
+                        clearInterval(interval);
+                        overlay.style.transition = 'opacity 1s';
+                        overlay.style.opacity = '0';
+                        setTimeout(() => overlay.remove(), 1000);
+                        localStorage.setItem('tutorialShown', 'true');
+                        return;
+                    }
+                    ctxOverlay.clearRect(0, 0, window.innerWidth, window.innerHeight);
+                    ctxOverlay.save();
+                    ctxOverlay.globalAlpha = 0.4;
+                    ctxOverlay.strokeStyle = 'white';
+                    ctxOverlay.lineWidth = 2;
+                    const cx = window.innerWidth / 2, cy = window.innerHeight / 2 + 40;
+                    ctxOverlay.beginPath(); ctxOverlay.ellipse(cx - 20, cy - 20, 25, 35, 0, 0, Math.PI * 2); ctxOverlay.stroke();
+                    ctxOverlay.fillStyle = 'rgba(255,255,240,0.15)';
+                    ctxOverlay.fillRect(cx - 40, cy - 5, 80, 55);
+                    ctxOverlay.font = 'bold 18px "Segoe UI"';
+                    ctxOverlay.fillStyle = 'rgba(255,250,210,0.9)';
+                    ctxOverlay.fillText(labels[step], cx - 80, cy + 80);
+                    ctxOverlay.restore();
+                    step++;
+                }, 2800);
+            }
+
+            function showRandomEntrance() {
+                let phrase = entrancePhrases[Math.floor(Math.random() * entrancePhrases.length)];
+                introDiv.innerText = phrase;
+                setTimeout(() => introDiv.style.opacity = '0', 3000);
+                setTimeout(() => { if (!localStorage.getItem('tutorialShown')) startTutorial(); }, 3800);
+            }
+
+            window.addEventListener('beforeunload', (e) => {
+                let exitMsg = exitPhrases[Math.floor(Math.random() * exitPhrases.length)];
+                let div = document.createElement('div');
+                div.innerText = exitMsg;
+                div.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:white; background:rgba(0,0,0,0.6); padding:20px; border-radius:40px; z-index:9999;';
+                document.body.appendChild(div);
+                setTimeout(() => div.remove(), 1500);
+            });
+
+            function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // 启动
+            document.addEventListener('DOMContentLoaded', () => {
+                initPollen();
+                initMediaPipe();
+                startCamera();
+                showRandomEntrance();
+                animate();
+                setInterval(() => { colorShift = Math.sin(Date.now() / 30000 * Math.PI * 2) * 0.02; }, 100);
+            });
+        })();
+    </script>
+</body>
+</html>
+```
