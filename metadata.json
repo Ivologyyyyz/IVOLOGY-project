@@ -1,6 +1,0 @@
-{
-  "name": "Quiet Garden",
-  "description": "A quiet digital garden of mindful hand gestures, where you can grow flowers, rain, mushrooms, and butterflies.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
